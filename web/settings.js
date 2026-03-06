@@ -3,6 +3,8 @@ const $ = (id) => document.getElementById(id);
 const state = {
   envValues: {},
   coreKeys: [],
+  authRequired: false,
+  authenticated: false,
 };
 
 async function apiFetch(url, options = {}) {
@@ -11,9 +13,20 @@ async function apiFetch(url, options = {}) {
     ...options,
   });
   if (!response.ok) {
-    throw new Error(await response.text());
+    const text = await response.text();
+    let message = text;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && parsed.detail) {
+        message = String(parsed.detail);
+      }
+    } catch (_error) {
+      // keep raw text fallback
+    }
+    throw new Error(message || `Request failed: ${response.status}`);
   }
-  return response.json();
+  const contentType = response.headers.get("content-type") || "";
+  return contentType.includes("application/json") ? response.json() : response.text();
 }
 
 function setLoading(show) {
@@ -28,6 +41,23 @@ function notify(message, type = "info") {
   toast.textContent = message;
   root.appendChild(toast);
   window.setTimeout(() => toast.remove(), 2600);
+}
+
+function setAuthView() {
+  const needsUnlock = state.authRequired && !state.authenticated;
+  const authCard = $("settings-auth-card");
+  const content = $("settings-content");
+  const logoutButton = $("settings-logout-btn");
+  if (authCard) authCard.style.display = needsUnlock ? "block" : "none";
+  if (content) content.style.display = needsUnlock ? "none" : "block";
+  if (logoutButton) logoutButton.style.display = state.authRequired && state.authenticated ? "inline-flex" : "none";
+}
+
+async function refreshAuthStatus() {
+  const status = await apiFetch("/api/auth/status");
+  state.authRequired = !!status.required;
+  state.authenticated = !!status.authenticated;
+  setAuthView();
 }
 
 function toEditorText(values) {
@@ -84,7 +114,7 @@ function renderAdditionalRows() {
   const rows = additionalRows();
   body.innerHTML = "";
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="3" class="muted">No additional variables.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="3" class="muted">No extra settings added yet.</td></tr>`;
     return;
   }
   rows.forEach(([key, value]) => {
@@ -139,7 +169,49 @@ async function loadEnv() {
   renderCoreInputs();
   renderAdditionalRows();
   syncRawEditor();
-  $("settings-message").textContent = reveal ? "Secrets are visible." : "Secrets are masked by default.";
+  $("settings-message").textContent = reveal
+    ? "Sensitive values are currently visible."
+    : "Sensitive values are hidden.";
+}
+
+async function loginSettings() {
+  const password = $("settings-password").value;
+  if (!password.trim()) {
+    $("settings-auth-message").textContent = "Password is required.";
+    return;
+  }
+  await apiFetch("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+  $("settings-password").value = "";
+  $("settings-auth-message").textContent = "Access granted.";
+  await refreshAuthStatus();
+  if (!state.authRequired || state.authenticated) {
+    await loadEnv();
+    notify("Settings unlocked.", "info");
+  }
+}
+
+async function logoutSettings() {
+  await apiFetch("/api/auth/logout", { method: "POST" });
+  await refreshAuthStatus();
+  $("settings-auth-message").textContent = "Settings locked.";
+  notify("Settings locked.", "info");
+}
+
+async function testNotification() {
+  const result = await apiFetch("/api/support/notifications/test", { method: "POST" });
+  if (result.sent) {
+    notify("Test notification sent successfully.", "info");
+    $("settings-message").textContent = "Test notification sent.";
+  } else if (result.reason === "not_configured") {
+    notify("Set OUTBOUND_WEBHOOK_URL first to enable notifications.", "warning");
+    $("settings-message").textContent = "Notification endpoint is not configured.";
+  } else {
+    notify("Notification test failed.", "error");
+    $("settings-message").textContent = "Notification test failed. Check logs for details.";
+  }
 }
 
 function addAdditionalRow() {
@@ -167,8 +239,8 @@ async function saveEnv() {
   renderCoreInputs();
   renderAdditionalRows();
   syncRawEditor();
-  $("settings-message").textContent = "Settings saved.";
-  notify("Environment settings saved.", "info");
+  $("settings-message").textContent = "Configuration saved.";
+  notify("Configuration saved successfully.", "info");
   saveButton.classList.remove("is-busy");
 }
 
@@ -177,11 +249,20 @@ async function withLoading(fn) {
     setLoading(true);
     await fn();
   } catch (error) {
-    $("settings-message").textContent = `Error: ${error.message}`;
-    notify(`Settings error: ${error.message}`, "error");
+    if (String(error.message).includes("settings_auth_required")) {
+      state.authenticated = false;
+      setAuthView();
+      $("settings-auth-message").textContent = "Session expired. Enter password again.";
+      notify("Settings access expired. Please unlock again.", "warning");
+    } else {
+      $("settings-message").textContent = `Could not save configuration: ${error.message}`;
+      notify(`Configuration error: ${error.message}`, "error");
+    }
   } finally {
     setLoading(false);
-    $("save-env-btn").classList.remove("is-busy");
+    if ($("save-env-btn")) {
+      $("save-env-btn").classList.remove("is-busy");
+    }
   }
 }
 
@@ -189,5 +270,20 @@ $("reload-env-btn").addEventListener("click", () => withLoading(loadEnv));
 $("save-env-btn").addEventListener("click", () => withLoading(saveEnv));
 $("secret-toggle").addEventListener("change", () => withLoading(loadEnv));
 $("add-env-row-btn").addEventListener("click", addAdditionalRow);
+$("settings-login-btn").addEventListener("click", () => withLoading(loginSettings));
+$("settings-logout-btn").addEventListener("click", () => withLoading(logoutSettings));
+$("test-notify-btn").addEventListener("click", () => withLoading(testNotification));
+$("settings-password").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    withLoading(loginSettings);
+  }
+});
 
-withLoading(loadEnv);
+withLoading(async () => {
+  await refreshAuthStatus();
+  if (state.authRequired && !state.authenticated) {
+    $("settings-auth-message").textContent = "Please unlock settings to continue.";
+    return;
+  }
+  await loadEnv();
+});

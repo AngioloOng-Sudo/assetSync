@@ -82,6 +82,64 @@ def init_db() -> None:
 
                 CREATE INDEX IF NOT EXISTS idx_sync_events_created_at
                 ON sync_events(created_at);
+
+                CREATE TABLE IF NOT EXISTS sync_audit_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_type TEXT NOT NULL,
+                    trigger TEXT NOT NULL,
+                    autosync_enabled INTEGER NOT NULL,
+                    changes_found INTEGER NOT NULL,
+                    reconcile_queued INTEGER NOT NULL DEFAULT 0,
+                    retry_requeued INTEGER NOT NULL DEFAULT 0,
+                    processed INTEGER NOT NULL DEFAULT 0,
+                    success INTEGER NOT NULL DEFAULT 0,
+                    partial INTEGER NOT NULL DEFAULT 0,
+                    failed INTEGER NOT NULL DEFAULT 0,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    duration_ms INTEGER NOT NULL DEFAULT 0,
+                    notes_json TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_sync_audit_runs_completed_at
+                ON sync_audit_runs(completed_at);
+
+                CREATE TABLE IF NOT EXISTS asset_content_hashes (
+                    identifier TEXT PRIMARY KEY,
+                    content_hash TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS asset_tombstones (
+                    identifier TEXT PRIMARY KEY,
+                    deleted_at TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    metadata_json TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE TABLE IF NOT EXISTS asset_event_stream (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_type TEXT NOT NULL,
+                    identifier TEXT,
+                    source TEXT NOT NULL DEFAULT 'system',
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_asset_event_stream_created_at
+                ON asset_event_stream(created_at);
+
+                CREATE INDEX IF NOT EXISTS idx_asset_event_stream_identifier
+                ON asset_event_stream(identifier);
+
+                CREATE TABLE IF NOT EXISTS sync_event_dedup (
+                    fingerprint TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_sync_event_dedup_expires_at
+                ON sync_event_dedup(expires_at);
                 """
             )
             conn.commit()
@@ -231,6 +289,322 @@ def event_metrics() -> dict[str, int]:
     return output
 
 
+def insert_sync_audit_run(entry: dict[str, Any]) -> int:
+    """Insert one sync audit run entry and return its id."""
+    payload = {
+        "run_type": str(entry.get("run_type", "manual")),
+        "trigger": str(entry.get("trigger", "unknown")),
+        "autosync_enabled": 1 if entry.get("autosync_enabled") else 0,
+        "changes_found": 1 if entry.get("changes_found") else 0,
+        "reconcile_queued": int(entry.get("reconcile_queued", 0)),
+        "retry_requeued": int(entry.get("retry_requeued", 0)),
+        "processed": int(entry.get("processed", 0)),
+        "success": int(entry.get("success", 0)),
+        "partial": int(entry.get("partial", 0)),
+        "failed": int(entry.get("failed", 0)),
+        "started_at": str(entry.get("started_at") or utcnow_iso()),
+        "completed_at": str(entry.get("completed_at") or utcnow_iso()),
+        "duration_ms": int(entry.get("duration_ms", 0)),
+        "notes_json": json.dumps(entry.get("notes", {}), ensure_ascii=True),
+    }
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            cursor = conn.execute(
+                """
+                INSERT INTO sync_audit_runs (
+                    run_type,
+                    trigger,
+                    autosync_enabled,
+                    changes_found,
+                    reconcile_queued,
+                    retry_requeued,
+                    processed,
+                    success,
+                    partial,
+                    failed,
+                    started_at,
+                    completed_at,
+                    duration_ms,
+                    notes_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    payload["run_type"],
+                    payload["trigger"],
+                    payload["autosync_enabled"],
+                    payload["changes_found"],
+                    payload["reconcile_queued"],
+                    payload["retry_requeued"],
+                    payload["processed"],
+                    payload["success"],
+                    payload["partial"],
+                    payload["failed"],
+                    payload["started_at"],
+                    payload["completed_at"],
+                    payload["duration_ms"],
+                    payload["notes_json"],
+                ),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+        finally:
+            conn.close()
+
+
+def fetch_sync_audit_runs(limit: int = 50) -> list[dict[str, Any]]:
+    """Return recent sync audit run entries."""
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM sync_audit_runs
+                ORDER BY completed_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        finally:
+            conn.close()
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["notes"] = json.loads(item.get("notes_json") or "{}")
+        except json.JSONDecodeError:
+            item["notes"] = {}
+        item.pop("notes_json", None)
+        item["autosync_enabled"] = bool(item.get("autosync_enabled"))
+        item["changes_found"] = bool(item.get("changes_found"))
+        items.append(item)
+    return items
+
+
+def append_asset_event(
+    event_type: str,
+    identifier: str | None,
+    source: str,
+    payload: dict[str, Any] | None = None,
+) -> int:
+    """Append one immutable record to asset_event_stream."""
+    payload_json = json.dumps(payload or {}, ensure_ascii=True)
+    now = utcnow_iso()
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            cursor = conn.execute(
+                """
+                INSERT INTO asset_event_stream (event_type, identifier, source, payload_json, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (event_type, identifier, source, payload_json, now),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+        finally:
+            conn.close()
+
+
+def fetch_asset_events(
+    *,
+    limit: int = 200,
+    identifier: str | None = None,
+    event_type: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch immutable asset event stream entries (latest first)."""
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            query = """
+                SELECT *
+                FROM asset_event_stream
+                WHERE (? IS NULL OR identifier = ?)
+                  AND (? IS NULL OR event_type = ?)
+                ORDER BY id DESC
+                LIMIT ?
+            """
+            rows = conn.execute(
+                query,
+                (identifier, identifier, event_type, event_type, limit),
+            ).fetchall()
+        finally:
+            conn.close()
+
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["payload"] = json.loads(item.get("payload_json") or "{}")
+        except json.JSONDecodeError:
+            item["payload"] = {}
+        item.pop("payload_json", None)
+        items.append(item)
+    return items
+
+
+def register_event_fingerprint(fingerprint: str, ttl_seconds: int = 600) -> bool:
+    """
+    Register one event fingerprint for short-window deduplication.
+
+    Returns True when accepted (new fingerprint), False when duplicate.
+    """
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    expires = (now_dt + timedelta(seconds=max(1, ttl_seconds))).isoformat()
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM sync_event_dedup WHERE expires_at < ?", (now,))
+            existing = conn.execute(
+                "SELECT 1 FROM sync_event_dedup WHERE fingerprint = ?",
+                (fingerprint,),
+            ).fetchone()
+            if existing:
+                conn.commit()
+                return False
+            conn.execute(
+                """
+                INSERT INTO sync_event_dedup (fingerprint, created_at, expires_at)
+                VALUES (?, ?, ?)
+                """,
+                (fingerprint, now, expires),
+            )
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+
+def dedup_metrics() -> dict[str, int]:
+    """Return dedup cache size metrics."""
+    now = utcnow_iso()
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM sync_event_dedup WHERE expires_at < ?", (now,))
+            row = conn.execute("SELECT COUNT(*) AS count FROM sync_event_dedup").fetchone()
+            active = int(row["count"]) if row else 0
+            conn.commit()
+        finally:
+            conn.close()
+    return {"active_fingerprints": active}
+
+
+def get_asset_content_hash(identifier: str) -> str | None:
+    """Return last stored content hash for identifier."""
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                """
+                SELECT content_hash
+                FROM asset_content_hashes
+                WHERE identifier = ?
+                """,
+                (identifier,),
+            ).fetchone()
+        finally:
+            conn.close()
+    return str(row["content_hash"]) if row else None
+
+
+def set_asset_content_hash(identifier: str, content_hash: str) -> None:
+    """Upsert content hash for identifier."""
+    now = utcnow_iso()
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO asset_content_hashes (identifier, content_hash, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(identifier) DO UPDATE SET
+                    content_hash = excluded.content_hash,
+                    updated_at = excluded.updated_at
+                """,
+                (identifier, content_hash, now),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def upsert_tombstone(identifier: str, reason: str, metadata: dict[str, Any] | None = None) -> None:
+    """Create or update local tombstone record for a deleted asset."""
+    now = utcnow_iso()
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO asset_tombstones (identifier, deleted_at, reason, metadata_json)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(identifier) DO UPDATE SET
+                    deleted_at = excluded.deleted_at,
+                    reason = excluded.reason,
+                    metadata_json = excluded.metadata_json
+                """,
+                (identifier, now, reason, json.dumps(metadata or {}, ensure_ascii=True)),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def remove_tombstone(identifier: str) -> None:
+    """Remove tombstone marker for identifier."""
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM asset_tombstones WHERE identifier = ?", (identifier,))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def is_tombstoned(identifier: str) -> bool:
+    """Return True when identifier is currently tombstoned."""
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT 1 FROM asset_tombstones WHERE identifier = ?",
+                (identifier,),
+            ).fetchone()
+        finally:
+            conn.close()
+    return row is not None
+
+
+def list_tombstones(limit: int = 200) -> list[dict[str, Any]]:
+    """Return recent tombstone records."""
+    with _DB_LOCK:
+        conn = get_connection()
+        try:
+            rows = conn.execute(
+                """
+                SELECT * FROM asset_tombstones
+                ORDER BY deleted_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        finally:
+            conn.close()
+    output: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["metadata"] = json.loads(item.get("metadata_json") or "{}")
+        except json.JSONDecodeError:
+            item["metadata"] = {}
+        item.pop("metadata_json", None)
+        output.append(item)
+    return output
+
+
 def cleanup_events(days: int = 30) -> int:
     """Delete processed events older than the provided day retention."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
@@ -244,6 +618,34 @@ def cleanup_events(days: int = 30) -> int:
                   AND status IN ('success', 'failed', 'partial')
                 """,
                 (cutoff,),
+            )
+            conn.execute(
+                """
+                DELETE FROM sync_audit_runs
+                WHERE completed_at < ?
+                """,
+                (cutoff,),
+            )
+            conn.execute(
+                """
+                DELETE FROM asset_content_hashes
+                WHERE updated_at < ?
+                """,
+                (cutoff,),
+            )
+            conn.execute(
+                """
+                DELETE FROM asset_tombstones
+                WHERE deleted_at < ?
+                """,
+                (cutoff,),
+            )
+            conn.execute(
+                """
+                DELETE FROM sync_event_dedup
+                WHERE expires_at < ?
+                """,
+                (utcnow_iso(),),
             )
             conn.commit()
             return int(cursor.rowcount)

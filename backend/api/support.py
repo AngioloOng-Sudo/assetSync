@@ -14,6 +14,7 @@ from backend.services.support_module import (
     list_tickets,
     run_connectivity_checks,
     run_support_maintenance,
+    send_test_outbound_notification,
     system_health_snapshot,
 )
 from backend.utils.security import sanitize_payload
@@ -68,3 +69,8 @@ def download_diagnostics() -> str:
 @router.post("/maintenance")
 def support_maintenance() -> dict:
     return run_support_maintenance()
+
+
+@router.post("/notifications/test")
+def test_outbound_notification() -> dict:
+    return send_test_outbound_notification()

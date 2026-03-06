@@ -5,13 +5,17 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-import requests
+from pydantic import ValidationError
 
+from backend.models.external_schemas import KaseyaAssetModel
+from backend.services.activity_logger import log_activity
+from backend.services.mock_fixtures import load_fixture_assets
+from backend.services.resilience import resilient_request
 from backend.services.settings_manager import get_bool_setting, get_setting
 
 
 def _mock_kaseya_assets() -> list[dict[str, Any]]:
-    return [
+    defaults = [
         {
             "Identifier": "GSIS-001",
             "Name": "Finance-Laptop-01",
@@ -49,6 +53,7 @@ def _mock_kaseya_assets() -> list[dict[str, Any]]:
             "detail_source": "mock_kaseya",
         },
     ]
+    return load_fixture_assets("MOCK_KASEYA_FIXTURE_PATH", defaults)
 
 
 def _auth_headers() -> dict[str, str]:
@@ -70,24 +75,47 @@ def _base_assets_url() -> str:
     return f"{base_url}/assets"
 
 
+def _normalize_assets(items: Any, source: str) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    candidate_items = items if isinstance(items, list) else []
+    for raw in candidate_items:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            parsed = KaseyaAssetModel.model_validate(raw).model_dump()
+            if not parsed.get("assetinfo") and isinstance(parsed.get("AssetInfo"), list):
+                parsed["assetinfo"] = parsed.get("AssetInfo")
+            parsed.setdefault("detail_source", source)
+            normalized.append(parsed)
+        except ValidationError as exc:
+            log_activity(
+                level="warning",
+                category="kaseya_client",
+                message="Skipped invalid Kaseya asset payload.",
+                details={"source": source, "error": str(exc)[:200]},
+            )
+    return normalized
+
+
 def fetch_kaseya_assets(top: int = 100, skip: int = 0) -> list[dict[str, Any]]:
     """Fetch Kaseya assets from API or mock provider (paged)."""
     if get_bool_setting("USE_MOCK_APIS", True):
         assets = _mock_kaseya_assets()
-        return assets[skip : skip + top]
+        return _normalize_assets(assets[skip : skip + top], "mock")
 
     headers = _auth_headers()
-    response = requests.get(
+    response = resilient_request(
+        "kaseya",
+        "GET",
         _base_assets_url(),
         headers=headers,
         params={"$top": max(1, min(top, 100)), "$skip": max(skip, 0)},
         timeout=20,
     )
-    response.raise_for_status()
     payload = response.json()
     if isinstance(payload, list):
-        return payload
-    return payload.get("items", [])
+        return _normalize_assets(payload, "kaseya_api")
+    return _normalize_assets(payload.get("items", []), "kaseya_api")
 
 
 def fetch_all_kaseya_assets(page_size: int = 100, max_pages: int = 100) -> list[dict[str, Any]]:
@@ -112,31 +140,41 @@ def _filter_lookup(identifier: str) -> dict[str, Any] | None:
     if get_bool_setting("USE_MOCK_APIS", True):
         return None
     headers = _auth_headers()
-    response = requests.get(
-        _base_assets_url(),
-        headers=headers,
-        params={"$filter": f"Identifier eq '{identifier}'", "$top": 1},
-        timeout=20,
-    )
-    if response.status_code >= 400:
+    try:
+        response = resilient_request(
+            "kaseya",
+            "GET",
+            _base_assets_url(),
+            headers=headers,
+            params={"$filter": f"Identifier eq '{identifier}'", "$top": 1},
+            timeout=20,
+        )
+    except Exception:
         return None
     payload = response.json()
     items = payload if isinstance(payload, list) else payload.get("items", [])
-    return items[0] if items else None
+    normalized = _normalize_assets(items, "filter_lookup")
+    return normalized[0] if normalized else None
 
 
 def _specific_device_lookup(identifier: str) -> dict[str, Any] | None:
     if get_bool_setting("USE_MOCK_APIS", True):
         return None
     headers = _auth_headers()
-    response = requests.get(f"{_base_assets_url()}/{identifier}", headers=headers, timeout=20)
-    if response.status_code == 404:
-        return None
-    if response.status_code >= 400:
+    try:
+        response = resilient_request(
+            "kaseya",
+            "GET",
+            f"{_base_assets_url()}/{identifier}",
+            headers=headers,
+            timeout=20,
+        )
+    except Exception:
         return None
     payload = response.json()
     if isinstance(payload, dict):
-        return payload
+        normalized = _normalize_assets([payload], "specific_endpoint")
+        return normalized[0] if normalized else None
     return None
 
 

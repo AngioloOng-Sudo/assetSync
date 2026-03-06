@@ -69,3 +69,33 @@ class MarkReadRequest(BaseModel):
     """Mark-read payload for activity center channels."""
 
     channels: list[str] | None = None
+
+
+class AuthLoginRequest(BaseModel):
+    """Login payload for dashboard authentication."""
+
+    password: str = Field(default="", min_length=1, max_length=256)
+
+
+class SyncRunRequest(BaseModel):
+    """Manual sync cycle trigger payload."""
+
+    force: bool = Field(
+        default=True,
+        description="Run even when AUTOSYNC_ENABLED=false.",
+    )
+    process_limit: int = Field(default=50, ge=1, le=500)
+
+
+class TokenRotateRequest(BaseModel):
+    """Rotate one token/secret in .env without service restart."""
+
+    key: str = Field(min_length=2, max_length=128)
+    value: str = Field(min_length=1, max_length=4096)
+    keep_previous: bool = True
+
+
+class MappingConfigUpdateRequest(BaseModel):
+    """Payload for updating external field mapping configuration."""
+
+    config: dict[str, Any]

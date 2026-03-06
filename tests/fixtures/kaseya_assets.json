@@ -1,0 +1,30 @@
+[
+  {
+    "Identifier": "GSIS-001",
+    "Name": "Finance-Laptop-01",
+    "Manufacturer": "Dell",
+    "Model": "Latitude 5440",
+    "ModifiedDate": "2026-03-05T06:15:00Z",
+    "assetinfo": [
+      {
+        "key": "department",
+        "value": "Finance"
+      }
+    ],
+    "detail_source": "fixture_kaseya"
+  },
+  {
+    "Identifier": "GSIS-005",
+    "Name": "Admin-Desktop-05",
+    "Manufacturer": "HP",
+    "Model": "EliteDesk 600",
+    "ModifiedDate": "2026-03-06T02:12:00Z",
+    "assetinfo": [
+      {
+        "key": "department",
+        "value": "Admin"
+      }
+    ],
+    "detail_source": "fixture_kaseya"
+  }
+]

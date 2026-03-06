@@ -49,18 +49,35 @@ function formatDate(isoDate) {
   return parsed.toLocaleString();
 }
 
+function formatStatusLabel(value) {
+  if (!value) return "Unknown";
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === "partial") return "Needs review";
+  if (normalized === "failed" || normalized === "error") return "Failed";
+  if (normalized === "warning") return "Warning";
+  if (normalized === "info") return "Info";
+  if (normalized === "success") return "Success";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 function setAutosyncButton(enabled) {
   const button = $("autosync-navbar-toggle");
-  button.textContent = `AUTOSYNC: ${enabled ? "LIVE" : "OFFLINE"}`;
+  button.textContent = `Auto Sync: ${enabled ? "On" : "Off"}`;
   button.classList.toggle("primary", enabled);
   button.classList.toggle("soft", !enabled);
+}
+
+function setSyncRunStatus(message) {
+  const status = $("sync-run-status");
+  if (!status) return;
+  status.textContent = message;
 }
 
 function renderKaseyaTable(items) {
   const body = $("kaseya-table").querySelector("tbody");
   body.innerHTML = "";
   if (!items.length) {
-    body.innerHTML = `<tr><td colspan="6" class="muted">No Kaseya assets found.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" class="muted">No source assets found.</td></tr>`;
     return;
   }
   items.forEach((asset) => {
@@ -95,7 +112,7 @@ function renderRevnueTable(items) {
   const body = $("revnue-table").querySelector("tbody");
   body.innerHTML = "";
   if (!items.length) {
-    body.innerHTML = `<tr><td colspan="5" class="muted">No Revnue assets found.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" class="muted">No destination assets found.</td></tr>`;
     return;
   }
   items.forEach((asset) => {
@@ -106,7 +123,7 @@ function renderRevnueTable(items) {
       <td class="mono">${asset.serial_number || ""}</td>
       <td class="mono">${asset.asset_tag || ""}</td>
       <td>${asset.name || ""}</td>
-      <td><button class="danger delete-revnue-btn" data-id="${identifier}">Delete</button></td>
+      <td><button class="danger delete-revnue-btn" data-id="${identifier}">Remove</button></td>
     `;
     body.appendChild(row);
   });
@@ -114,13 +131,14 @@ function renderRevnueTable(items) {
     button.addEventListener("click", async (event) => {
       const identifier = event.target.getAttribute("data-id");
       if (!identifier) return;
-      if (!window.confirm(`Delete Revnue asset with identifier ${identifier}?`)) return;
+      if (!window.confirm(`Remove destination asset "${identifier}"? This action cannot be undone.`)) return;
       try {
         setLoading(true);
         await apiFetch(`/api/assets/revnue/${encodeURIComponent(identifier)}`, { method: "DELETE" });
         await Promise.all([loadRevnueAssets(), loadLogs()]);
+        notify(`Removed destination asset "${identifier}".`, "info");
       } catch (error) {
-        notify(`Delete failed: ${error.message}`, "error");
+        notify(`Could not remove asset: ${error.message}`, "error");
       } finally {
         setLoading(false);
       }
@@ -131,7 +149,7 @@ function renderRevnueTable(items) {
 function renderLogEntries(containerId, items) {
   const container = $(containerId);
   if (!items.length) {
-    container.innerHTML = `<div class="muted">No entries.</div>`;
+    container.innerHTML = `<div class="muted">No activity yet.</div>`;
     return;
   }
   container.innerHTML = items
@@ -142,7 +160,7 @@ function renderLogEntries(containerId, items) {
       <div class="activity-item">
         <div class="row spread">
           <strong>${item.message || "-"}</strong>
-          <span class="pill ${pillClass}">${level}</span>
+          <span class="pill ${pillClass}">${formatStatusLabel(level)}</span>
         </div>
         <div class="muted">${formatDate(item.timestamp)} | ${item.category || ""}</div>
       </div>
@@ -154,14 +172,25 @@ function renderLogEntries(containerId, items) {
 function renderTransferSummary(result) {
   if (!result) return;
   const summary = result.summary || {};
-  const firstWarning = (result.results || []).find((entry) => entry.status === "partial");
+  const firstWarning = (result.results || []).find((entry) => entry.status === "partial" || entry.status === "failed");
   const debug = firstWarning ? firstWarning.debug || {} : {};
+  const hasDebug = Object.keys(debug).length > 0;
   $("transfer-summary").innerHTML = `
-    <div><strong>Created:</strong> ${summary.created || 0} | <strong>Updated:</strong> ${
+    <div><strong>Added:</strong> ${summary.created || 0} | <strong>Updated:</strong> ${
     summary.updated || 0
-  } | <strong>Partial:</strong> ${summary.partial || 0} | <strong>Failed:</strong> ${summary.failed || 0}</div>
-    <div class="muted">Warnings are marked as partial with debug metadata for field completeness checks.</div>
-    <pre class="mono">${JSON.stringify(debug, null, 2)}</pre>
+  } | <strong>Needs review:</strong> ${summary.partial || 0} | <strong>Failed:</strong> ${
+    summary.failed || 0
+  }</div>
+    <div class="muted">Records marked as "Needs review" synced with missing or incomplete optional fields.</div>
+    ${
+      hasDebug
+        ? `<div class="muted">Sample technical details (for troubleshooting):</div><pre class="mono">${JSON.stringify(
+            debug,
+            null,
+            2
+          )}</pre>`
+        : ""
+    }
   `;
 }
 
@@ -178,7 +207,9 @@ function renderHistory(identifier, items) {
     return false;
   });
   if (!filtered.length) {
-    container.innerHTML = `<div class="muted">No transfer history for ${target || "the selected identifier"}.</div>`;
+    container.innerHTML = `<div class="muted">No activity history found for ${
+      target || "the selected identifier"
+    }.</div>`;
     return;
   }
   container.innerHTML = filtered
@@ -187,7 +218,7 @@ function renderHistory(identifier, items) {
       <div class="event-item">
         <div class="row spread">
           <strong>${item.message}</strong>
-          <span>${item.level}</span>
+          <span>${formatStatusLabel(item.level)}</span>
         </div>
         <div class="muted">${formatDate(item.timestamp)} | ${item.category || ""}</div>
       </div>
@@ -206,7 +237,7 @@ async function loadKaseyaAssets() {
   });
   const data = await apiFetch(`/api/kaseya/assets?${query.toString()}`);
   state.kaseya.totalPages = data.total_pages || 1;
-  $("kaseya-page-label").textContent = `Page ${data.page}/${state.kaseya.totalPages}`;
+  $("kaseya-page-label").textContent = `Page ${data.page} of ${state.kaseya.totalPages}`;
   renderKaseyaTable(data.items || []);
 }
 
@@ -219,7 +250,7 @@ async function loadRevnueAssets() {
   });
   const data = await apiFetch(`/api/revnue/assets?${query.toString()}`);
   state.revnue.totalPages = data.total_pages || 1;
-  $("revnue-page-label").textContent = `Page ${data.page}/${state.revnue.totalPages}`;
+  $("revnue-page-label").textContent = `Page ${data.page} of ${state.revnue.totalPages}`;
   renderRevnueTable(data.items || []);
 }
 
@@ -241,10 +272,10 @@ async function loadAutosyncState() {
 function openTransferModal() {
   const count = state.selectedIdentifiers.size;
   if (!count) {
-    notify("Select at least one Kaseya asset.", "warning");
+    notify("Select at least one source asset to sync.", "warning");
     return;
   }
-  $("transfer-modal-text").textContent = `Transfer ${count} selected asset(s) to Revnue?`;
+  $("transfer-modal-text").textContent = `Sync ${count} selected asset(s) to the destination system?`;
   $("transfer-modal").classList.add("open");
 }
 
@@ -273,11 +304,12 @@ async function executeTransfer() {
     });
     renderTransferSummary(result);
     state.selectedIdentifiers.clear();
+    $("kaseya-select-all").checked = false;
     closeTransferModal();
     await Promise.all([loadKaseyaAssets(), loadRevnueAssets(), loadLogs()]);
-    notify("Transfer completed successfully.", "info");
+    notify("Sync completed successfully.", "info");
   } catch (error) {
-    notify(`Transfer failed: ${error.message}`, "error");
+    notify(`Sync failed: ${error.message}`, "error");
   } finally {
     setButtonBusy(transferButton, false);
     setLoading(false);
@@ -293,15 +325,6 @@ async function markLogsRead() {
 }
 
 function bindEvents() {
-  $("sidebar-toggle-btn").addEventListener("click", () => {
-    const sidebar = $("dashboard-sidebar");
-    const shell = document.querySelector(".app-shell");
-    const isCollapsed = sidebar.classList.toggle("collapsed");
-    if (shell) {
-      shell.classList.toggle("menu-collapsed", isCollapsed);
-    }
-  });
-
   $("open-activity-btn").addEventListener("click", () => {
     openActivityModal();
   });
@@ -311,12 +334,46 @@ function bindEvents() {
   });
 
   $("refresh-data-btn").addEventListener("click", () => withLoading(refreshAll));
+  $("export-csv-btn").addEventListener("click", () => {
+    const url = "/api/assets/export.csv";
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "asset_sync_comparison.csv";
+    anchor.click();
+    notify("CSV export started.", "info");
+  });
   $("run-reconcile-btn").addEventListener("click", () =>
     withLoading(async () => {
-      await apiFetch("/api/sync/reconcile", { method: "POST" });
-      await apiFetch("/api/autosync/process", { method: "POST" });
+      setSyncRunStatus("Manual sync started...");
+      const run = await apiFetch("/api/sync/run-now", {
+        method: "POST",
+        body: JSON.stringify({ force: true, process_limit: 100 }),
+      });
       await Promise.all([loadRevnueAssets(), loadLogs()]);
-      notify("Reconciliation completed.", "info");
+      const processed = run.processed || 0;
+      const failed = run.failed || 0;
+      const reconcileQueued = run.reconcile_queued || 0;
+      setSyncRunStatus(
+        `Last manual sync: processed ${processed}, queued ${reconcileQueued}, failed ${failed}, finished ${formatDate(
+          run.completed_at
+        )}.`
+      );
+      notify("Manual sync completed.", failed > 0 ? "warning" : "info");
+    })
+  );
+  $("preview-selected-btn").addEventListener("click", () =>
+    withLoading(async () => {
+      const identifiers = Array.from(state.selectedIdentifiers);
+      if (!identifiers.length) {
+        notify("Select at least one source asset to preview.", "warning");
+        return;
+      }
+      const result = await apiFetch("/api/sync/dry-run", {
+        method: "POST",
+        body: JSON.stringify({ identifiers }),
+      });
+      renderTransferSummary(result);
+      notify("Preview generated. No data was changed.", "info");
     })
   );
   $("transfer-selected-btn").addEventListener("click", openTransferModal);
@@ -333,8 +390,9 @@ function bindEvents() {
         body: JSON.stringify({ enabled: nextEnabled }),
       });
       setAutosyncButton(nextEnabled);
+      notify(`Auto Sync is now ${nextEnabled ? "On" : "Off"}.`, "info");
     } catch (error) {
-      notify(`Autosync update failed: ${error.message}`, "error");
+      notify(`Could not update Auto Sync: ${error.message}`, "error");
     } finally {
       setLoading(false);
     }
@@ -351,7 +409,19 @@ function bindEvents() {
     state.kaseya.page = 1;
     withLoading(loadKaseyaAssets);
   });
+  $("kaseya-search").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    state.kaseya.search = $("kaseya-search").value.trim();
+    state.kaseya.page = 1;
+    withLoading(loadKaseyaAssets);
+  });
   $("revnue-search-btn").addEventListener("click", () => {
+    state.revnue.search = $("revnue-search").value.trim();
+    state.revnue.page = 1;
+    withLoading(loadRevnueAssets);
+  });
+  $("revnue-search").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
     state.revnue.search = $("revnue-search").value.trim();
     state.revnue.page = 1;
     withLoading(loadRevnueAssets);
@@ -397,6 +467,11 @@ function bindEvents() {
     const identifier = $("history-identifier").value.trim();
     renderHistory(identifier, state.logs.messages);
   });
+  $("history-identifier").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    const identifier = $("history-identifier").value.trim();
+    renderHistory(identifier, state.logs.messages);
+  });
 }
 
 async function refreshAll() {
@@ -408,7 +483,7 @@ async function withLoading(fn) {
     setLoading(true);
     await fn();
   } catch (error) {
-    notify(error.message, "error");
+    notify(`Action failed: ${error.message}`, "error");
   } finally {
     setLoading(false);
   }
@@ -416,11 +491,12 @@ async function withLoading(fn) {
 
 async function init() {
   bindEvents();
+  setSyncRunStatus("No manual sync has been started in this session.");
   await withLoading(refreshAll);
   window.setInterval(() => loadLogs().catch(() => {}), 15000);
 }
 
 init().catch((error) => {
   setLoading(false);
-  notify(`Initialization failed: ${error.message}`, "error");
+  notify(`Could not load dashboard: ${error.message}`, "error");
 });
