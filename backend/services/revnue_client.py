@@ -4,15 +4,25 @@ from __future__ import annotations
 
 from typing import Any
 
-import requests
+from pydantic import ValidationError
 
 from backend.models.db import MOCK_REVNUE_ASSETS_PATH
+from backend.models.external_schemas import RevnueAssetModel
+from backend.services.activity_logger import log_activity
+from backend.services.mock_fixtures import load_fixture_assets
+from backend.services.resilience import resilient_request
 from backend.services.settings_manager import get_bool_setting, get_setting
 from backend.utils.file_io import read_json, write_json
 
 
 def _load_mock_assets() -> list[dict[str, Any]]:
     assets = read_json(MOCK_REVNUE_ASSETS_PATH, [])
+    if get_bool_setting("USE_MOCK_FIXTURE_REPLAY", False):
+        needs_seed = not isinstance(assets, list) or not assets
+        if needs_seed:
+            seeded = load_fixture_assets("MOCK_REVNUE_FIXTURE_PATH", [])
+            assets = seeded
+            _save_mock_assets(assets if isinstance(assets, list) else [])
     return assets if isinstance(assets, list) else []
 
 
@@ -40,6 +50,25 @@ def _headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
+def _normalize_assets(items: Any, source: str) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    candidate_items = items if isinstance(items, list) else []
+    for raw in candidate_items:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            parsed = RevnueAssetModel.model_validate(raw).model_dump()
+            normalized.append(parsed)
+        except ValidationError as exc:
+            log_activity(
+                level="warning",
+                category="revnue_client",
+                message="Skipped invalid Revnue asset payload.",
+                details={"source": source, "error": str(exc)[:200]},
+            )
+    return normalized
+
+
 def fetch_revnue_assets(
     company: str | int | None = None,
     top: int = 100,
@@ -49,20 +78,21 @@ def fetch_revnue_assets(
     if get_bool_setting("USE_MOCK_APIS", True):
         assets = _load_mock_assets()
         scoped_assets = [asset for asset in assets if not company or str(asset.get("company")) == str(company)]
-        return scoped_assets[skip : skip + top]
+        return _normalize_assets(scoped_assets[skip : skip + top], "mock")
 
     company_value = str(company or get_setting("REVNUE_COMPANY", "1")).strip() or "1"
-    response = requests.get(
+    response = resilient_request(
+        "revnue",
+        "GET",
         _asset_url(),
         headers=_headers(),
         params={"company": company_value, "limit": max(1, top), "offset": max(skip, 0)},
         timeout=20,
     )
-    response.raise_for_status()
     payload = response.json()
     if isinstance(payload, list):
-        return payload
-    return payload.get("items", [])
+        return _normalize_assets(payload, "revnue_api")
+    return _normalize_assets(payload.get("items", []), "revnue_api")
 
 
 def fetch_all_revnue_assets(company: str | int | None = None, page_size: int = 100) -> list[dict[str, Any]]:
@@ -137,24 +167,30 @@ def upsert_revnue_asset(
     if matches:
         match = matches[0]
         revnue_id = match.get("id")
-        response = requests.put(
+        response = resilient_request(
+            "revnue",
+            "PUT",
             f"{_asset_url().rstrip('/')}/{revnue_id}",
             headers=_headers(),
             json=mapped_asset,
             timeout=20,
         )
-        response.raise_for_status()
-        return {"action": "updated", "asset": response.json()}
+        asset = response.json()
+        normalized = _normalize_assets([asset], "revnue_update")
+        return {"action": "updated", "asset": normalized[0] if normalized else asset}
 
-    response = requests.post(
+    response = resilient_request(
+        "revnue",
+        "POST",
         _asset_url(),
         headers=_headers(),
         json=mapped_asset,
         params={"company": company_value},
         timeout=20,
     )
-    response.raise_for_status()
-    return {"action": "created", "asset": response.json()}
+    asset = response.json()
+    normalized = _normalize_assets([asset], "revnue_create")
+    return {"action": "created", "asset": normalized[0] if normalized else asset}
 
 
 def delete_revnue_asset(identifier: str, company: str | int | None = None) -> bool:
@@ -172,13 +208,14 @@ def delete_revnue_asset(identifier: str, company: str | int | None = None) -> bo
         _save_mock_assets(filtered)
         return True
 
-    response = requests.delete(
+    resilient_request(
+        "revnue",
+        "DELETE",
         f"{_asset_url().rstrip('/')}/{matches[0].get('id')}",
         headers=_headers(),
         params={"company": company_value},
         timeout=20,
     )
-    response.raise_for_status()
     return True
 
 
@@ -193,13 +230,14 @@ def delete_revnue_asset_by_id(company: str | int, revnue_id: str | int) -> bool:
         _save_mock_assets(filtered)
         return True
 
-    response = requests.delete(
+    resilient_request(
+        "revnue",
+        "DELETE",
         f"{_asset_url().rstrip('/')}/{revnue_id}",
         headers=_headers(),
         params={"company": str(company)},
         timeout=20,
     )
-    response.raise_for_status()
     return True
 
 
@@ -209,7 +247,7 @@ def check_revnue_connectivity() -> dict[str, Any]:
         return {"reachable": True, "mode": "mock", "url": _test_url(), "status_code": 200}
 
     try:
-        response = requests.get(_test_url(), headers=_headers(), timeout=10)
+        response = resilient_request("revnue", "GET", _test_url(), headers=_headers(), timeout=10)
         return {
             "reachable": response.ok,
             "mode": "live",

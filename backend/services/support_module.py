@@ -8,9 +8,11 @@ from typing import Any
 
 import requests
 
-from backend.models.db import DB_PATH, SUPPORT_TICKETS_PATH, cleanup_events, utcnow_iso
+from backend.models.db import DB_PATH, SUPPORT_TICKETS_PATH, cleanup_events, list_tombstones, utcnow_iso
 from backend.services.activity_logger import get_activity, get_state, log_activity
+from backend.services.notifications import send_outbound_webhook
 from backend.services.autosync_engine import get_sync_status, process_pending_events, retry_failed_events
+from backend.services.resilience import get_resilience_snapshot
 from backend.services.revnue_client import check_revnue_connectivity
 from backend.services.settings_manager import get_bool_setting, get_setting
 from backend.utils.file_io import append_jsonl, read_jsonl
@@ -58,10 +60,15 @@ def safe_config_snapshot() -> dict[str, str]:
         "USE_MOCK_APIS",
         "AUTOSYNC_ENABLED",
         "AUTOSYNC_INTERVAL_SECONDS",
+        "AUTOSYNC_CRON_WINDOWS",
+        "EVENT_DEDUP_WINDOW_SECONDS",
         "REVNUE_COMPANY",
         "REVNUE_TEST_URL",
         "REVNUE_ASSET_URL",
         "KASEYA_BASE_URL",
+        "USE_MOCK_FIXTURE_REPLAY",
+        "MOCK_KASEYA_FIXTURE_PATH",
+        "MOCK_REVNUE_FIXTURE_PATH",
         "REVNUE_TOKEN",
         "KASEYA_TOKEN_ID",
         "KASEYA_TOKEN_SECRET",
@@ -87,7 +94,9 @@ def system_health_snapshot() -> dict[str, Any]:
         },
         "safe_config": safe_config_snapshot(),
         "runtime_state": get_state().get("status", {}),
+        "resilience": get_resilience_snapshot(),
         "sync_status": sync_status,
+        "tombstones": list_tombstones(limit=50),
         "recent_activity": activity,
         "recent_failed_or_partial_activity": [
             item for item in activity if item.get("level") in {"warning", "error"}
@@ -154,3 +163,20 @@ def export_diagnostics_json() -> str:
 def diagnostics_file_path() -> Path:
     """Return default path where diagnostics exports can be stored."""
     return SUPPORT_TICKETS_PATH.parent / "diagnostics_export.json"
+
+
+def send_test_outbound_notification() -> dict[str, Any]:
+    """Send a test outbound webhook notification."""
+    payload = {
+        "message": "GSIS Asset Sync test notification",
+        "timestamp": utcnow_iso(),
+        "sync_status": get_sync_status(),
+    }
+    result = send_outbound_webhook("test_notification", payload)
+    log_activity(
+        level="info" if result.get("sent") else "warning",
+        category="support",
+        message="Outbound notification test executed.",
+        details=result,
+    )
+    return result

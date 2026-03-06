@@ -26,15 +26,32 @@ Implementation of the SOP-defined system that synchronizes assets between Kaseya
 - `KASEYA_TOKEN_SECRET`
 - `WEBHOOK_SHARED_SECRET`
 - `USE_MOCK_APIS`
+- `USE_MOCK_FIXTURE_REPLAY`
+- `MOCK_KASEYA_FIXTURE_PATH`
+- `MOCK_REVNUE_FIXTURE_PATH`
 - `AUTOSYNC_ENABLED`
 - `AUTOSYNC_INTERVAL_SECONDS`
+- `AUTOSYNC_MAX_INTERVAL_SECONDS`
+- `AUTOSYNC_CRON_WINDOWS`
+- `EVENT_DEDUP_WINDOW_SECONDS`
+- `DASHBOARD_PASSWORD` or `DASHBOARD_PASSWORD_HASH`
+- `DASHBOARD_SESSION_SECRET`
+- `DASHBOARD_SESSION_TIMEOUT_SECONDS`
+- `OUTBOUND_WEBHOOK_URL`
+- `OUTBOUND_WEBHOOK_TIMEOUT_SECONDS`
+- `CIRCUIT_BREAKER_FAILURE_THRESHOLD`
+- `CIRCUIT_BREAKER_COOLDOWN_SECONDS`
+- `RATE_LIMIT_CAPACITY`
+- `RATE_LIMIT_REFILL_PER_SECOND`
 
 ## API Contracts
-- Dashboard: `GET /api/kaseya/assets`, `GET /api/revnue/assets`, `POST /api/transfer`
-- Autosync: `GET /api/sync/status`, `GET /api/sync/overview`, `POST /api/sync/reconcile`, `POST /api/sync/dry-run`, `POST /api/webhooks/kaseya`
+- Dashboard: `GET /api/kaseya/assets`, `GET /api/revnue/assets`, `POST /api/transfer`, `GET /api/assets/export.csv`
+- Autosync: `GET /api/sync/status`, `GET /api/sync/overview`, `GET /api/sync/audit`, `GET /api/sync/events`, `GET /api/sync/schedule`, `POST /api/sync/reconcile`, `POST /api/sync/run-now`, `POST /api/sync/dry-run`, `POST /api/webhooks/kaseya`
 - Logs: `GET /api/logs`, `POST /api/logs/mark-read`
-- Settings: `GET /api/settings/env`, `POST /api/settings/env`
-- Support: `GET /api/support/diagnostics`, `GET /api/support/checks`, `GET /api/support/tickets`, `POST /api/support/tickets`
+- Auth: `GET /api/auth/status`, `POST /api/auth/login`, `POST /api/auth/logout`
+- Settings: `GET /api/settings/env`, `POST /api/settings/env`, `POST /api/settings/tokens/rotate`, `GET /api/settings/mapping`, `POST /api/settings/mapping`
+- Support: `GET /api/support/diagnostics`, `GET /api/support/checks`, `GET /api/support/tickets`, `POST /api/support/tickets`, `POST /api/support/notifications/test`
+- Monitoring: `GET /metrics`, `GET /api/health`
 
 ## CLI Utilities
 - `python scripts/kaseya_client.py`

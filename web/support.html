@@ -3,81 +3,97 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Support - GSIS Asset Sync</title>
+    <title>Help and Support - Asset Sync</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <header class="topbar">
-      <h1>GSIS Asset Sync Platform</h1>
-      <nav class="nav-links">
-        <a href="/">Dashboard</a>
-        <a href="/sync-status">Sync Status</a>
-        <a href="/settings">Settings</a>
-        <a href="/support" class="active">Support</a>
-      </nav>
-    </header>
+    <div class="app-shell">
+      <aside id="dashboard-sidebar" class="sidebar">
+        <h2>Operator Console</h2>
+        <p class="muted">Source to destination asset sync</p>
+        <nav class="sidebar-nav">
+          <a href="/">Dashboard</a>
+          <a href="/sync-status">Sync Health</a>
+          <a href="/settings">Configuration</a>
+          <a href="/support" class="active">Help</a>
+        </nav>
+      </aside>
 
-    <main>
-      <section class="grid two">
-        <div class="card flow">
-          <div class="row spread">
-            <h2>Diagnostics Viewer</h2>
-            <div class="row">
-              <button id="run-diagnostics-btn" class="soft">Run Diagnostics</button>
-              <button id="export-diagnostics-btn" class="soft">Export Diagnostics</button>
+      <div class="shell-main">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button id="sidebar-toggle-btn" class="icon-btn" type="button">Menu</button>
+            <h1>Asset Sync Console</h1>
+          </div>
+        </header>
+
+        <main>
+          <section class="grid two">
+            <div class="card flow">
+              <div class="row spread">
+                <h2>Diagnostics Overview</h2>
+                <div class="row">
+                  <button id="run-diagnostics-btn" class="soft">Refresh Diagnostics</button>
+                  <button id="export-diagnostics-btn" class="soft">Download Diagnostics</button>
+                </div>
+              </div>
+              <pre id="diagnostics-viewer" class="event-list"></pre>
             </div>
-          </div>
-          <pre id="diagnostics-viewer" class="event-list"></pre>
-        </div>
 
-        <div class="card flow">
-          <h2>Connectivity Tests</h2>
-          <button id="connectivity-btn" class="soft">Run Connectivity Check</button>
-          <pre id="connectivity-output" class="event-list"></pre>
-        </div>
-      </section>
+            <div class="card flow">
+              <h2>Connection Checks</h2>
+              <button id="connectivity-btn" class="soft">Run Connection Test</button>
+              <pre id="connectivity-output" class="event-list"></pre>
+            </div>
+          </section>
 
-      <section class="grid two">
-        <div class="card flow">
-          <h2>Safe Config Visibility</h2>
-          <pre id="safe-config-viewer" class="event-list"></pre>
-        </div>
-        <div class="card flow">
-          <h2>Recent Failed/Partial Activity</h2>
-          <div id="failed-partial-activity" class="event-list"></div>
-        </div>
-      </section>
+          <section class="grid two">
+            <div class="card flow">
+              <h2>Safe Configuration View</h2>
+              <pre id="safe-config-viewer" class="event-list"></pre>
+            </div>
+            <div class="card flow">
+              <h2>Recent Items Needing Attention</h2>
+              <div id="failed-partial-activity" class="event-list"></div>
+            </div>
+          </section>
 
-      <section class="grid two">
-        <div class="card flow">
-          <h2>Submit Support Ticket</h2>
-          <div class="row">
-            <input id="ticket-title" type="text" placeholder="Ticket title" />
-          </div>
-          <div class="row">
-            <textarea id="ticket-description" placeholder="Describe the issue"></textarea>
-          </div>
-          <div class="row">
-            <select id="ticket-priority">
-              <option value="low">Low</option>
-              <option value="normal" selected>Normal</option>
-              <option value="high">High</option>
-            </select>
-            <button id="submit-ticket-btn" class="primary">Submit Ticket</button>
-          </div>
-          <p id="ticket-message" class="muted"></p>
-        </div>
+          <section class="grid two">
+            <div class="card flow">
+              <h2>Report an Issue</h2>
+              <div class="row">
+                <input id="ticket-title" type="text" placeholder="Short issue title" />
+              </div>
+              <div class="row">
+                <textarea
+                  id="ticket-description"
+                  placeholder="What happened and what did you expect?"
+                ></textarea>
+              </div>
+              <div class="row">
+                <select id="ticket-priority">
+                  <option value="low">Low</option>
+                  <option value="normal" selected>Normal</option>
+                  <option value="high">High</option>
+                </select>
+                <button id="submit-ticket-btn" class="primary">Send Report</button>
+              </div>
+              <p id="ticket-message" class="muted"></p>
+            </div>
 
-        <div class="card flow">
-          <h2>Ticket History</h2>
-          <button id="load-tickets-btn" class="soft">Reload Tickets</button>
-          <div id="ticket-history" class="event-list"></div>
-        </div>
-      </section>
-    </main>
+            <div class="card flow">
+              <h2>Recent Reports</h2>
+              <button id="load-tickets-btn" class="soft">Refresh Reports</button>
+              <div id="ticket-history" class="event-list"></div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
 
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
+    <script src="/static/sidebar.js"></script>
     <script src="/static/support.js"></script>
   </body>
 </html>

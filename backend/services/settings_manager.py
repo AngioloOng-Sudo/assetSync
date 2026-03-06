@@ -7,7 +7,7 @@ from typing import Any
 
 from dotenv import dotenv_values
 
-from backend.utils.security import is_secret_key, mask_env_values, sanitize_payload
+from backend.utils.security import is_secret_key, mask_env_values, mask_secret, sanitize_payload
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = PROJECT_ROOT / ".env"
@@ -27,12 +27,37 @@ SETTING_ALIASES: dict[str, tuple[str, ...]] = {
     "WEBHOOK_SHARED_SECRET": ("WEBHOOK_SHARED_SECRET",),
 }
 
+TOKEN_ROTATABLE_KEYS: tuple[str, ...] = (
+    "REVNUE_API_TOKEN",
+    "REVNUE_TOKEN",
+    "KASEYA_API_TOKEN",
+    "KASEYA_TOKEN_SECRET",
+    "WEBHOOK_SHARED_SECRET",
+    "OUTBOUND_WEBHOOK_URL",
+)
+
 CORE_ENV_KEYS: tuple[str, ...] = (
     "USE_MOCK_APIS",
+    "USE_MOCK_FIXTURE_REPLAY",
+    "MOCK_KASEYA_FIXTURE_PATH",
+    "MOCK_REVNUE_FIXTURE_PATH",
     "AUTOSYNC_ENABLED",
     "AUTOSYNC_INTERVAL_SECONDS",
+    "AUTOSYNC_MAX_INTERVAL_SECONDS",
+    "AUTOSYNC_CRON_WINDOWS",
     "WEBHOOK_SHARED_SECRET",
+    "DASHBOARD_PASSWORD",
+    "DASHBOARD_PASSWORD_HASH",
+    "DASHBOARD_SESSION_SECRET",
+    "DASHBOARD_SESSION_TIMEOUT_SECONDS",
     "REVNUE_COMPANY",
+    "OUTBOUND_WEBHOOK_URL",
+    "OUTBOUND_WEBHOOK_TIMEOUT_SECONDS",
+    "CIRCUIT_BREAKER_FAILURE_THRESHOLD",
+    "CIRCUIT_BREAKER_COOLDOWN_SECONDS",
+    "RATE_LIMIT_CAPACITY",
+    "RATE_LIMIT_REFILL_PER_SECOND",
+    "EVENT_DEDUP_WINDOW_SECONDS",
     "REVNUE_TOKEN",
     "REVNUE_TEST_URL",
     "REVNUE_ASSET_URL",
@@ -95,6 +120,55 @@ def update_env_values(new_values: dict[str, str]) -> dict[str, Any]:
         existing[key_str] = value_str
     save_env_values(existing)
     return get_env_view(reveal_secrets=False)
+
+
+def summarize_env_changes(before: dict[str, str], after: dict[str, str]) -> list[dict[str, str]]:
+    """Return masked before/after records for keys changed between two env snapshots."""
+    changes: list[dict[str, str]] = []
+    all_keys = sorted(set(before.keys()) | set(after.keys()))
+    for key in all_keys:
+        old_value = before.get(key, "")
+        new_value = after.get(key, "")
+        if old_value == new_value:
+            continue
+        is_secret = is_secret_key(key)
+        changes.append(
+            {
+                "key": key,
+                "change_type": "added" if not old_value and new_value else "removed" if old_value and not new_value else "updated",
+                "before": mask_secret(old_value) if is_secret else old_value,
+                "after": mask_secret(new_value) if is_secret else new_value,
+            }
+        )
+    return changes
+
+
+def rotate_secret_token(key: str, new_value: str, *, keep_previous: bool = True) -> dict[str, Any]:
+    """
+    Rotate one secret token without downtime by updating .env atomically.
+
+    Clients read .env on each request path, so rotation applies immediately.
+    """
+    token_key = str(key).strip()
+    if token_key not in TOKEN_ROTATABLE_KEYS:
+        raise ValueError("token_key_not_allowed")
+    value = str(new_value).strip()
+    if not value:
+        raise ValueError("token_value_required")
+
+    env_values = load_env_values()
+    previous = env_values.get(token_key, "")
+    env_values[token_key] = value
+    if keep_previous and previous and previous != value:
+        env_values[f"{token_key}_PREVIOUS"] = previous
+    save_env_values(env_values)
+    return {
+        "rotated": True,
+        "key": token_key,
+        "changed": previous != value,
+        "previous_preserved": bool(keep_previous and previous and previous != value),
+        "active_value_masked": mask_secret(value),
+    }
 
 
 def get_setting(key: str, default: str = "") -> str:

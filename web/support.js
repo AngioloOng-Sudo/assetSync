@@ -29,10 +29,25 @@ function notify(message, type = "info") {
   window.setTimeout(() => toast.remove(), 2600);
 }
 
+function formatDate(isoDate) {
+  if (!isoDate) return "-";
+  const parsed = new Date(isoDate);
+  if (Number.isNaN(parsed.getTime())) return isoDate;
+  return parsed.toLocaleString();
+}
+
+function formatLevelLabel(value) {
+  if (!value) return "Info";
+  const normalized = String(value).toLowerCase();
+  if (normalized === "partial") return "Needs review";
+  if (normalized === "failed" || normalized === "error") return "Failed";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 function renderFailedPartialActivity(items) {
   const container = $("failed-partial-activity");
   if (!items || !items.length) {
-    container.innerHTML = `<div class="muted">No failed or partial activity.</div>`;
+    container.innerHTML = `<div class="muted">No items need attention right now.</div>`;
     return;
   }
   container.innerHTML = items
@@ -41,9 +56,9 @@ function renderFailedPartialActivity(items) {
       <div class="event-item">
         <div class="row spread">
           <strong>${item.message || "-"}</strong>
-          <span>${item.level || "-"}</span>
+          <span>${formatLevelLabel(item.level)}</span>
         </div>
-        <div class="muted">${item.timestamp || ""} | ${item.category || ""}</div>
+        <div class="muted">${formatDate(item.timestamp)} | ${item.category || ""}</div>
       </div>
     `
     )
@@ -68,7 +83,7 @@ async function submitTicket() {
   const priority = $("ticket-priority").value;
 
   if (!title || !description) {
-    $("ticket-message").textContent = "Title and description are required.";
+    $("ticket-message").textContent = "Please add both a title and a description.";
     return;
   }
 
@@ -78,8 +93,8 @@ async function submitTicket() {
   });
   $("ticket-title").value = "";
   $("ticket-description").value = "";
-  $("ticket-message").textContent = "Ticket submitted.";
-  notify("Support ticket submitted.", "info");
+  $("ticket-message").textContent = "Issue report submitted.";
+  notify("Issue report submitted.", "info");
   await loadTickets();
 }
 
@@ -88,7 +103,7 @@ async function loadTickets() {
   const items = data.items || [];
   const container = $("ticket-history");
   if (!items.length) {
-    container.innerHTML = `<div class="muted">No tickets found.</div>`;
+    container.innerHTML = `<div class="muted">No reports submitted yet.</div>`;
     return;
   }
   container.innerHTML = items
@@ -97,10 +112,12 @@ async function loadTickets() {
       <div class="event-item">
         <div class="row spread">
           <strong>#${ticket.id} ${ticket.title}</strong>
-          <span class="pill ${ticket.priority === "high" ? "error" : "success"}">${ticket.priority}</span>
+          <span class="pill ${
+            ticket.priority === "high" ? "error" : ticket.priority === "normal" ? "warning" : "success"
+          }">${formatLevelLabel(ticket.priority)}</span>
         </div>
         <div>${ticket.description}</div>
-        <div class="muted">${ticket.created_at}</div>
+        <div class="muted">${formatDate(ticket.created_at)}</div>
       </div>
     `
     )
@@ -116,6 +133,7 @@ async function exportDiagnostics() {
   anchor.download = "diagnostics_export.json";
   anchor.click();
   URL.revokeObjectURL(url);
+  notify("Diagnostics file downloaded.", "info");
 }
 
 async function withLoading(fn) {
@@ -123,7 +141,7 @@ async function withLoading(fn) {
     setLoading(true);
     await fn();
   } catch (error) {
-    notify(`Support action failed: ${error.message}`, "error");
+    notify(`Unable to complete this action: ${error.message}`, "error");
   } finally {
     setLoading(false);
   }

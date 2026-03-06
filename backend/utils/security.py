@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from typing import Any
 
 SECRET_KEYWORDS = ("TOKEN", "SECRET", "PASSWORD", "KEY")
@@ -55,3 +57,25 @@ def validate_webhook_secret(provided_secret: str | None, expected_secret: str | 
         return True
     return bool(provided_secret and provided_secret == expected_secret)
 
+
+def validate_webhook_hmac_signature(
+    raw_body: bytes,
+    provided_signature: str | None,
+    expected_secret: str | None,
+) -> bool:
+    """
+    Validate webhook HMAC signature.
+
+    Accepts header formats:
+    - `sha256=<hex>`
+    - `<hex>`
+    """
+    if not expected_secret:
+        return True
+    if not provided_signature:
+        return False
+    signature = provided_signature.strip()
+    if "=" in signature:
+        _, signature = signature.split("=", 1)
+    digest = hmac.new(expected_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(signature.lower(), digest.lower())

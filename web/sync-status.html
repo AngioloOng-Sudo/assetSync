@@ -3,67 +3,93 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sync Status - GSIS Asset Sync</title>
+    <title>Sync Health - Asset Sync</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <header class="topbar">
-      <h1>GSIS Asset Sync Platform</h1>
-      <nav class="nav-links">
-        <a href="/">Dashboard</a>
-        <a href="/sync-status" class="active">Sync Status</a>
-        <a href="/settings">Settings</a>
-        <a href="/support">Support</a>
-      </nav>
-    </header>
+    <div class="app-shell">
+      <aside id="dashboard-sidebar" class="sidebar">
+        <h2>Operator Console</h2>
+        <p class="muted">Source to destination asset sync</p>
+        <nav class="sidebar-nav">
+          <a href="/">Dashboard</a>
+          <a href="/sync-status" class="active">Sync Health</a>
+          <a href="/settings">Configuration</a>
+          <a href="/support">Help</a>
+        </nav>
+      </aside>
 
-    <main>
-      <section class="card flow">
-        <div class="row spread">
-          <h2>Autosync Health</h2>
-          <div class="row">
-            <select id="overview-window">
-              <option value="15m">15m</option>
-              <option value="1h">1h</option>
-              <option value="24h" selected>24h</option>
-              <option value="7d">7d</option>
-            </select>
-            <button id="sync-refresh-btn" class="soft">Refresh</button>
+      <div class="shell-main">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button id="sidebar-toggle-btn" class="icon-btn" type="button">Menu</button>
+            <h1>Asset Sync Console</h1>
           </div>
-        </div>
-        <div id="sync-kpis" class="kpi-grid"></div>
-        <div class="row spread">
-          <div>Health State: <span id="health-state-pill" class="pill">-</span></div>
-          <div class="muted">Worker heartbeat: <span id="worker-heartbeat">-</span></div>
-          <div class="muted">Last reconcile: <span id="last-reconcile">-</span></div>
-        </div>
-      </section>
+        </header>
 
-      <section class="grid two">
-        <div class="card flow">
-          <h3>Queue Metrics</h3>
-          <div id="queue-metrics" class="event-list"></div>
-        </div>
-        <div class="card flow">
-          <h3>System Health Snapshot</h3>
-          <pre id="health-snapshot" class="event-list"></pre>
-        </div>
-      </section>
+        <main>
+          <section class="card flow">
+            <div class="row spread">
+              <h2>Auto Sync Health</h2>
+              <div class="row">
+                <select id="overview-window">
+                  <option value="15m">15m</option>
+                  <option value="1h">1h</option>
+                  <option value="24h" selected>24h</option>
+                  <option value="7d">7d</option>
+                </select>
+                <button id="sync-refresh-btn" class="soft">Refresh</button>
+              </div>
+            </div>
+            <div id="sync-kpis" class="kpi-grid"></div>
+            <div class="row spread">
+              <div>Current health: <span id="health-state-pill" class="pill">-</span></div>
+              <div class="muted">Worker check-in: <span id="worker-heartbeat">-</span></div>
+              <div class="muted">Last sync check: <span id="last-reconcile">-</span></div>
+            </div>
+          </section>
 
-      <section class="grid two">
-        <div class="card flow">
-          <h3>Failed / Partial Events</h3>
-          <div id="failed-partial-events" class="event-list"></div>
-        </div>
-        <div class="card flow">
-          <h3>Recent Events</h3>
-          <div id="recent-events" class="event-list"></div>
-        </div>
-      </section>
-    </main>
+          <section class="grid two">
+            <div class="card flow">
+              <h3>Queue Overview</h3>
+              <div id="queue-metrics" class="event-list"></div>
+            </div>
+            <div class="card flow">
+              <h3>System Snapshot</h3>
+              <pre id="health-snapshot" class="event-list"></pre>
+            </div>
+          </section>
+
+          <section class="grid two">
+            <div class="card flow">
+              <h3>Items Needing Attention</h3>
+              <div id="failed-partial-events" class="event-list"></div>
+            </div>
+            <div class="card flow">
+              <h3>Recent Activity</h3>
+              <div id="recent-events" class="event-list"></div>
+            </div>
+          </section>
+
+          <section class="card flow">
+            <div class="row spread">
+              <h3>Sync Run History</h3>
+              <button id="sync-run-now-btn" class="soft">Run Sync Now</button>
+            </div>
+            <div id="sync-audit-history" class="event-list"></div>
+          </section>
+
+          <section class="card flow">
+            <h3>Recent Field Diffs</h3>
+            <div id="sync-diff-history" class="event-list"></div>
+          </section>
+        </main>
+      </div>
+    </div>
 
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
+    <script src="/static/sidebar.js"></script>
     <script src="/static/sync-status.js"></script>
   </body>
 </html>

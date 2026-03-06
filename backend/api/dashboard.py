@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import csv
+import io
+
 from fastapi import APIRouter, Query
+from fastapi.responses import PlainTextResponse
 
 from backend.models.schemas import AutosyncStateRequest, MarkReadRequest, TransferRequest
 from backend.services.activity_logger import get_activity, get_state, mark_logs_as_read
@@ -14,6 +18,7 @@ from backend.services.autosync_engine import (
 )
 from backend.services.kaseya_client import fetch_kaseya_assets
 from backend.services.matching import compare_assets
+from backend.services.parallel_fetch import fetch_asset_snapshots_async
 from backend.services.revnue_client import fetch_all_revnue_assets, fetch_revnue_assets
 from backend.services.transfer_engine import delete_revnue_asset, transfer_kaseya_assets_to_revnue
 
@@ -105,11 +110,53 @@ def get_revnue_assets_alias(
 
 
 @router.get("/assets/compare")
-def get_asset_comparison() -> dict:
+async def get_asset_comparison() -> dict:
+    kaseya_assets, revnue_assets = await fetch_asset_snapshots_async()
     return {
-        "items": compare_assets(fetch_kaseya_assets(top=100_000, skip=0), fetch_all_revnue_assets(company=None)),
+        "items": compare_assets(kaseya_assets, revnue_assets),
         "matching_rule": "Identifier == serial_number OR Identifier == asset_tag",
     }
+
+
+@router.get("/assets/export.csv", response_class=PlainTextResponse)
+async def export_asset_comparison_csv() -> str:
+    """Export asset comparison view as CSV for reporting."""
+    kaseya_assets, revnue_assets = await fetch_asset_snapshots_async()
+    comparison = compare_assets(kaseya_assets, revnue_assets)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "identifier",
+            "match_status",
+            "source_name",
+            "source_manufacturer",
+            "source_model",
+            "source_modified_date",
+            "destination_id",
+            "destination_name",
+            "destination_serial_number",
+            "destination_asset_tag",
+        ]
+    )
+    for row in comparison:
+        kaseya_asset = row.get("kaseya_asset") or {}
+        revnue_asset = row.get("revnue_asset") or {}
+        writer.writerow(
+            [
+                row.get("identifier", ""),
+                row.get("match_status", ""),
+                kaseya_asset.get("Name", ""),
+                kaseya_asset.get("Manufacturer", ""),
+                kaseya_asset.get("Model", ""),
+                kaseya_asset.get("ModifiedDate", ""),
+                revnue_asset.get("id", ""),
+                revnue_asset.get("name", ""),
+                revnue_asset.get("serial_number", ""),
+                revnue_asset.get("asset_tag", ""),
+            ]
+        )
+    return buffer.getvalue()
 
 
 @router.post("/transfer")

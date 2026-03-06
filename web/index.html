@@ -3,19 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GSIS Asset Sync Dashboard</title>
+    <title>Asset Sync Dashboard</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <aside id="dashboard-sidebar" class="sidebar">
         <h2>Operator Console</h2>
-        <p class="muted">Kaseya -> Strev/Revnue</p>
+        <p class="muted">Source to destination asset sync</p>
         <nav class="sidebar-nav">
-          <a href="/">Dashboard</a>
-          <a href="/sync-status">Sync Status</a>
-          <a href="/settings">Settings</a>
-          <a href="/support">Support</a>
+          <a href="/" class="active">Dashboard</a>
+          <a href="/sync-status">Sync Health</a>
+          <a href="/settings">Configuration</a>
+          <a href="/support">Help</a>
         </nav>
       </aside>
 
@@ -23,18 +23,12 @@
         <header class="topbar">
           <div class="topbar-left">
             <button id="sidebar-toggle-btn" class="icon-btn" type="button">Menu</button>
-            <h1>GSIS Asset Sync Platform</h1>
+            <h1>Asset Sync Console</h1>
           </div>
-          <nav class="nav-links">
-            <a href="/" class="active">Dashboard</a>
-            <a href="/sync-status">Sync Status</a>
-            <a href="/settings">Settings</a>
-            <a href="/support">Support</a>
-          </nav>
           <div class="row">
-            <button id="autosync-navbar-toggle" class="soft" type="button">AUTOSYNC: OFFLINE</button>
+            <button id="autosync-navbar-toggle" class="soft" type="button">Auto Sync: Off</button>
             <button id="open-activity-btn" class="soft" type="button">
-              Activity <span id="activity-unread-badge" class="badge">0</span>
+              Updates <span id="activity-unread-badge" class="badge">0</span>
             </button>
           </div>
         </header>
@@ -44,29 +38,34 @@
             <div class="row spread">
               <div class="row">
                 <button id="refresh-data-btn" class="soft">Refresh Data</button>
-                <button id="run-reconcile-btn" class="soft">Run Reconciliation</button>
+                <button id="run-reconcile-btn" class="soft">Sync Now</button>
+                <button id="export-csv-btn" class="soft">Export CSV</button>
               </div>
               <div class="row">
-                <label for="only-missing-toggle">Show only missing in Strev</label>
+                <label for="only-missing-toggle">Show only assets not yet in destination</label>
                 <input id="only-missing-toggle" type="checkbox" />
               </div>
             </div>
+            <div id="sync-run-status" class="muted">No manual sync has been started in this session.</div>
           </section>
 
           <section class="grid two">
             <div class="card flow">
-              <h2>Kaseya Assets</h2>
+              <h2>Source Assets (Kaseya)</h2>
               <div class="row">
                 <input
                   id="kaseya-search"
                   type="search"
-                  placeholder="Search identifier, name, manufacturer..."
+                  placeholder="Search by identifier, name, maker, or model..."
                 />
                 <button id="kaseya-search-btn">Search</button>
               </div>
               <div class="row spread">
-                <div class="muted">Select assets for batch transfer.</div>
-                <button id="transfer-selected-btn" class="primary">Transfer Selected -></button>
+                <div class="muted">Choose source assets and sync them to destination.</div>
+                <div class="row">
+                  <button id="preview-selected-btn" class="soft">Preview Selected</button>
+                  <button id="transfer-selected-btn" class="primary">Sync Selected</button>
+                </div>
               </div>
               <div style="overflow:auto;">
                 <table id="kaseya-table">
@@ -77,23 +76,27 @@
                       <th>Name</th>
                       <th>Manufacturer</th>
                       <th>Model</th>
-                      <th>Modified Date</th>
+                      <th>Last Updated</th>
                     </tr>
                   </thead>
                   <tbody></tbody>
                 </table>
               </div>
               <div class="row spread">
-                <button id="kaseya-prev-btn">Prev</button>
+                <button id="kaseya-prev-btn">Previous</button>
                 <span id="kaseya-page-label" class="muted">Page 1</span>
                 <button id="kaseya-next-btn">Next</button>
               </div>
             </div>
 
             <div class="card flow">
-              <h2>Strev/Revnue Assets</h2>
+              <h2>Destination Assets (Strev/Revnue)</h2>
               <div class="row">
-                <input id="revnue-search" type="search" placeholder="Search serial, tag, name..." />
+                <input
+                  id="revnue-search"
+                  type="search"
+                  placeholder="Search by serial number, tag, or name..."
+                />
                 <button id="revnue-search-btn">Search</button>
               </div>
               <div style="overflow:auto;">
@@ -104,14 +107,14 @@
                       <th>Serial Number</th>
                       <th>Asset Tag</th>
                       <th>Name</th>
-                      <th>Actions</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody></tbody>
                 </table>
               </div>
               <div class="row spread">
-                <button id="revnue-prev-btn">Prev</button>
+                <button id="revnue-prev-btn">Previous</button>
                 <span id="revnue-page-label" class="muted">Page 1</span>
                 <button id="revnue-next-btn">Next</button>
               </div>
@@ -119,24 +122,28 @@
           </section>
 
           <section class="card flow">
-            <h2>Transfer Details</h2>
+            <h2>Sync Results</h2>
             <div id="transfer-summary" class="transfer-summary muted">
-              No transfer executed in this session.
+              No sync action has been run in this session.
             </div>
           </section>
 
           <section class="card flow">
-            <h2>Per-Row Transfer History</h2>
+            <h2>Asset Activity History</h2>
             <div class="row">
-              <input id="history-identifier" type="text" placeholder="Enter identifier e.g. GSIS-001" />
-              <button id="history-load-btn" class="soft">Load History</button>
+              <input
+                id="history-identifier"
+                type="text"
+                placeholder="Enter asset identifier (example: GSIS-001)"
+              />
+              <button id="history-load-btn" class="soft">View History</button>
             </div>
             <div id="history-list" class="event-list"></div>
           </section>
 
           <p class="footer-note">
-            Matching rule enforced: Kaseya <code>Identifier</code> equals Revnue
-            <code>serial_number</code> or <code>asset_tag</code> only.
+            Matching rule: source <code>Identifier</code> must exactly match destination
+            <code>serial_number</code> or <code>asset_tag</code>.
           </p>
         </main>
       </div>
@@ -144,10 +151,10 @@
 
     <div id="transfer-modal" class="modal" aria-hidden="true">
       <div class="modal-content">
-        <h3>Confirm Batch Transfer</h3>
-        <p id="transfer-modal-text">Transfer selected assets to Revnue?</p>
+        <h3>Confirm Sync</h3>
+        <p id="transfer-modal-text">Sync selected assets to the destination system?</p>
         <div class="row">
-          <button id="confirm-transfer-btn" class="primary">Confirm Transfer</button>
+          <button id="confirm-transfer-btn" class="primary">Start Sync</button>
           <button id="cancel-transfer-btn">Cancel</button>
         </div>
       </div>
@@ -156,19 +163,19 @@
     <div id="activity-modal" class="modal" aria-hidden="true">
       <div class="modal-content" style="width:min(900px,100%)">
         <div class="row spread">
-          <h3>Activity Center</h3>
+          <h3>Activity Feed</h3>
           <div class="row">
-            <button id="mark-activity-read-btn" class="soft">Mark All Read</button>
+            <button id="mark-activity-read-btn" class="soft">Mark All Seen</button>
             <button id="close-activity-btn">Close</button>
           </div>
         </div>
         <div class="grid two">
           <div>
-            <h4>Notifications</h4>
+            <h4>Alerts</h4>
             <div id="activity-notifications" class="activity-list"></div>
           </div>
           <div>
-            <h4>Messages</h4>
+            <h4>Updates</h4>
             <div id="activity-messages" class="activity-list"></div>
           </div>
         </div>
@@ -177,6 +184,7 @@
 
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
+    <script src="/static/sidebar.js"></script>
     <script src="/static/app.js"></script>
   </body>
 </html>
