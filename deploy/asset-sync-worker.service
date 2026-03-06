@@ -1,0 +1,15 @@
+[Unit]
+Description=GSIS Asset Sync Worker
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/gsis-asset-sync
+EnvironmentFile=/opt/gsis-asset-sync/.env
+ExecStart=/usr/bin/python3 -m backend.workers.autosync_worker
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+

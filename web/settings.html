@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings - GSIS Asset Sync</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>GSIS Asset Sync Platform</h1>
+      <nav class="nav-links">
+        <a href="/">Dashboard</a>
+        <a href="/sync-status">Sync Status</a>
+        <a href="/settings" class="active">Settings</a>
+        <a href="/support">Support</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="card flow">
+        <div class="row spread">
+          <h2>Core Environment Variables</h2>
+          <div class="row">
+            <label for="secret-toggle">Show secrets</label>
+            <input id="secret-toggle" type="checkbox" />
+          </div>
+        </div>
+        <div id="core-env-grid" class="grid two"></div>
+      </section>
+
+      <section class="card flow">
+        <h2>Additional Variables</h2>
+        <div style="overflow:auto;">
+          <table id="additional-env-table">
+            <thead>
+              <tr>
+                <th>Key</th>
+                <th>Value</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button id="add-env-row-btn" class="soft">Add Variable</button>
+      </section>
+
+      <section class="card flow">
+        <h2>Raw .env Editor</h2>
+        <textarea id="env-editor" spellcheck="false"></textarea>
+        <div class="row">
+          <button id="reload-env-btn" class="soft">Reload</button>
+          <button id="save-env-btn" class="primary">Save</button>
+        </div>
+        <p id="settings-message" class="muted"></p>
+      </section>
+    </main>
+
+    <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
+    <div id="toast-root" class="toast-root"></div>
+    <script src="/static/settings.js"></script>
+  </body>
+</html>

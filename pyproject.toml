@@ -1,0 +1,7 @@
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+exclude = ["backend/data"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
