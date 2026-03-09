@@ -48,9 +48,9 @@ function setAuthView() {
   const authCard = $("settings-auth-card");
   const content = $("settings-content");
   const logoutButton = $("settings-logout-btn");
-  if (authCard) authCard.style.display = needsUnlock ? "block" : "none";
-  if (content) content.style.display = needsUnlock ? "none" : "block";
-  if (logoutButton) logoutButton.style.display = state.authRequired && state.authenticated ? "inline-flex" : "none";
+  if (authCard) authCard.hidden = !needsUnlock;
+  if (content) content.hidden = needsUnlock;
+  if (logoutButton) logoutButton.hidden = !(state.authRequired && state.authenticated);
 }
 
 async function refreshAuthStatus() {
@@ -87,9 +87,9 @@ function renderCoreInputs() {
   container.innerHTML = "";
   state.coreKeys.forEach((key) => {
     const wrapper = document.createElement("div");
-    wrapper.className = "card";
+    wrapper.className = "card inset env-field";
     wrapper.innerHTML = `
-      <label for="core-${key}">${key}</label>
+      <label class="field-label" for="core-${key}">${key}</label>
       <input id="core-${key}" data-key="${key}" type="text" value="${state.envValues[key] || ""}" />
     `;
     container.appendChild(wrapper);

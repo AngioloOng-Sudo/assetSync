@@ -3,93 +3,182 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sync Health - Asset Sync</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <title>Sync Health — Asset Sync Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="/static/styles.css?v=20260309c" />
   </head>
   <body>
     <div class="app-shell">
+
+      <!-- ── Sidebar ── -->
       <aside id="dashboard-sidebar" class="sidebar">
-        <h2>Operator Console</h2>
-        <p class="muted">Source to destination asset sync</p>
-        <nav class="sidebar-nav">
-          <a href="/">Dashboard</a>
-          <a href="/sync-status" class="active">Sync Health</a>
-          <a href="/settings">Configuration</a>
-          <a href="/support">Help</a>
-        </nav>
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-icon">
+            <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM17 14v6M14 17h6"/></svg>
+          </div>
+          <div class="sidebar-brand-text">
+            <div class="sidebar-brand-name">Asset Sync</div>
+            <div class="sidebar-brand-sub">Operator Console</div>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-label">Navigation</div>
+          <nav class="sidebar-nav">
+            <a href="/">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              Dashboard
+            </a>
+            <a href="/sync-status" class="active">
+              <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Sync Health
+            </a>
+            <a href="/settings">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 0 0 4.93 19.07M4.93 4.93a10 10 0 0 0 14.14 14.14"/></svg>
+              Configuration
+            </a>
+            <a href="/support">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
+              Help &amp; Support
+            </a>
+          </nav>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-footer-version">Asset Sync v1.0</div>
+        </div>
       </aside>
 
+      <!-- ── Main area ── -->
       <div class="shell-main">
+
         <header class="topbar">
           <div class="topbar-left">
-            <button id="sidebar-toggle-btn" class="icon-btn" type="button">Menu</button>
+            <button id="sidebar-toggle-btn" class="menu-toggle" type="button" aria-label="Toggle sidebar">
+              <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
             <h1>Asset Sync Console</h1>
+          </div>
+          <div class="topbar-right">
+            <button id="sync-run-now-btn" class="topbar-btn" type="button">
+              <svg viewBox="0 0 24 24"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <span class="topbar-label">Run Sync Now</span>
+            </button>
           </div>
         </header>
 
-        <main>
-          <section class="card flow">
-            <div class="row spread">
-              <h2>Auto Sync Health</h2>
-              <div class="row">
-                <select id="overview-window">
-                  <option value="15m">15m</option>
-                  <option value="1h">1h</option>
-                  <option value="24h" selected>24h</option>
-                  <option value="7d">7d</option>
+        <div class="page-content">
+          <div class="page-header">
+            <div class="page-header-inner">
+              <div>
+                <div class="page-header-title">Sync Health</div>
+                <div class="page-header-desc">Monitor auto-sync performance, queue status, and recent activity</div>
+              </div>
+              <div class="page-header-actions">
+                <select id="overview-window" class="select-auto">
+                  <option value="15m">Last 15 min</option>
+                  <option value="1h">Last 1 hour</option>
+                  <option value="24h" selected>Last 24 hours</option>
+                  <option value="7d">Last 7 days</option>
                 </select>
-                <button id="sync-refresh-btn" class="soft">Refresh</button>
+                <button id="sync-refresh-btn" class="soft">
+                  <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  Refresh
+                </button>
               </div>
             </div>
-            <div id="sync-kpis" class="kpi-grid"></div>
-            <div class="row spread">
-              <div>Current health: <span id="health-state-pill" class="pill">-</span></div>
-              <div class="muted">Worker check-in: <span id="worker-heartbeat">-</span></div>
-              <div class="muted">Last sync check: <span id="last-reconcile">-</span></div>
-            </div>
-          </section>
+          </div>
 
-          <section class="grid two">
-            <div class="card flow">
-              <h3>Queue Overview</h3>
-              <div id="queue-metrics" class="event-list"></div>
-            </div>
-            <div class="card flow">
-              <h3>System Snapshot</h3>
-              <pre id="health-snapshot" class="event-list"></pre>
-            </div>
-          </section>
+          <main>
+            <!-- Overview Card with KPIs -->
+            <section class="card flow">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Auto Sync Overview</div>
+                  <div class="card-subtitle">Aggregate metrics for the selected time window</div>
+                </div>
+              </div>
 
-          <section class="grid two">
-            <div class="card flow">
-              <h3>Items Needing Attention</h3>
-              <div id="failed-partial-events" class="event-list"></div>
-            </div>
-            <div class="card flow">
-              <h3>Recent Activity</h3>
-              <div id="recent-events" class="event-list"></div>
-            </div>
-          </section>
+              <div id="sync-kpis" class="kpi-grid"></div>
 
-          <section class="card flow">
-            <div class="row spread">
-              <h3>Sync Run History</h3>
-              <button id="sync-run-now-btn" class="soft">Run Sync Now</button>
-            </div>
-            <div id="sync-audit-history" class="event-list"></div>
-          </section>
+              <div class="status-bar">
+                <div class="status-item">
+                  Current health: <span id="health-state-pill" class="pill neutral">—</span>
+                </div>
+                <div class="status-item">
+                  Worker check-in: <strong id="worker-heartbeat">—</strong>
+                </div>
+                <div class="status-item">
+                  Last sync check: <strong id="last-reconcile">—</strong>
+                </div>
+              </div>
+            </section>
 
-          <section class="card flow">
-            <h3>Recent Field Diffs</h3>
-            <div id="sync-diff-history" class="event-list"></div>
-          </section>
-        </main>
+            <!-- Queue + System Snapshot -->
+            <section class="grid two">
+              <div class="card flow">
+                <div class="card-head">
+                  <div class="card-title">Queue Overview</div>
+                </div>
+                <div id="queue-metrics" class="event-list"></div>
+              </div>
+              <div class="card flow">
+                <div class="card-head">
+                  <div class="card-title">System Snapshot</div>
+                </div>
+                <pre id="health-snapshot" class="event-list"></pre>
+              </div>
+            </section>
+
+            <!-- Attention + Recent Activity -->
+            <section class="grid two">
+              <div class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Items Needing Attention</div>
+                    <div class="card-subtitle">Failed or partially synced records</div>
+                  </div>
+                </div>
+                <div id="failed-partial-events" class="event-list"></div>
+              </div>
+              <div class="card flow">
+                <div class="card-head">
+                  <div class="card-title">Recent Activity</div>
+                </div>
+                <div id="recent-events" class="event-list"></div>
+              </div>
+            </section>
+
+            <!-- Sync Run History -->
+            <section class="card flow">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Sync Run History</div>
+                  <div class="card-subtitle">Audit log of all sync operations</div>
+                </div>
+              </div>
+              <div id="sync-audit-history" class="event-list"></div>
+            </section>
+
+            <!-- Field Diffs -->
+            <section class="card flow">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Recent Field Diffs</div>
+                  <div class="card-subtitle">Field-level changes from the last sync runs</div>
+                </div>
+              </div>
+              <div id="sync-diff-history" class="event-list"></div>
+            </section>
+          </main>
+        </div>
       </div>
     </div>
 
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
-    <script src="/static/sidebar.js"></script>
-    <script src="/static/sync-status.js"></script>
+    <script src="/static/sidebar.js?v=20260309c"></script>
+    <script src="/static/sync-status.js?v=20260309c"></script>
   </body>
 </html>

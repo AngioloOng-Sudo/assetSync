@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 from typing import Any
 
+import requests
 from pydantic import ValidationError
 
 from backend.models.external_schemas import KaseyaAssetModel
@@ -97,25 +98,57 @@ def _normalize_assets(items: Any, source: str) -> list[dict[str, Any]]:
     return normalized
 
 
+def _extract_assets_payload(payload: Any) -> tuple[list[Any], bool]:
+    """
+    Return candidate list payload plus recognition flag.
+
+    `recognized` tells the caller whether the response shape looks valid,
+    even when there are zero assets.
+    """
+    if isinstance(payload, list):
+        return payload, True
+    if not isinstance(payload, dict):
+        return [], False
+    for key in ("items", "value", "data", "results", "assets"):
+        if key in payload:
+            candidate = payload.get(key)
+            return candidate if isinstance(candidate, list) else [], True
+    return [], False
+
+
 def fetch_kaseya_assets(top: int = 100, skip: int = 0) -> list[dict[str, Any]]:
     """Fetch Kaseya assets from API or mock provider (paged)."""
     if get_bool_setting("USE_MOCK_APIS", True):
         assets = _mock_kaseya_assets()
         return _normalize_assets(assets[skip : skip + top], "mock")
 
+    bounded_top = max(1, min(top, 100))
+    bounded_skip = max(skip, 0)
     headers = _auth_headers()
-    response = resilient_request(
-        "kaseya",
-        "GET",
-        _base_assets_url(),
-        headers=headers,
-        params={"$top": max(1, min(top, 100)), "$skip": max(skip, 0)},
-        timeout=20,
+    attempts: tuple[dict[str, int], ...] = (
+        {"$top": bounded_top, "$skip": bounded_skip},
+        {"top": bounded_top, "skip": bounded_skip},
+        {},
     )
-    payload = response.json()
-    if isinstance(payload, list):
-        return _normalize_assets(payload, "kaseya_api")
-    return _normalize_assets(payload.get("items", []), "kaseya_api")
+
+    last_error: Exception | None = None
+    for params in attempts:
+        request_kwargs: dict[str, Any] = {"headers": headers, "timeout": 20}
+        if params:
+            request_kwargs["params"] = params
+        try:
+            response = resilient_request("kaseya", "GET", _base_assets_url(), **request_kwargs)
+            payload = response.json()
+            items, recognized = _extract_assets_payload(payload)
+            if recognized:
+                return _normalize_assets(items, "kaseya_api")
+        except requests.RequestException as exc:
+            last_error = exc
+            continue
+
+    if last_error:
+        raise last_error
+    return []
 
 
 def fetch_all_kaseya_assets(page_size: int = 100, max_pages: int = 100) -> list[dict[str, Any]]:

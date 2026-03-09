@@ -3,97 +3,208 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Help and Support - Asset Sync</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <title>Help &amp; Support — Asset Sync Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="/static/styles.css?v=20260309c" />
   </head>
   <body>
     <div class="app-shell">
+
+      <!-- ── Sidebar ── -->
       <aside id="dashboard-sidebar" class="sidebar">
-        <h2>Operator Console</h2>
-        <p class="muted">Source to destination asset sync</p>
-        <nav class="sidebar-nav">
-          <a href="/">Dashboard</a>
-          <a href="/sync-status">Sync Health</a>
-          <a href="/settings">Configuration</a>
-          <a href="/support" class="active">Help</a>
-        </nav>
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-icon">
+            <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM17 14v6M14 17h6"/></svg>
+          </div>
+          <div class="sidebar-brand-text">
+            <div class="sidebar-brand-name">Asset Sync</div>
+            <div class="sidebar-brand-sub">Operator Console</div>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-label">Navigation</div>
+          <nav class="sidebar-nav">
+            <a href="/">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              Dashboard
+            </a>
+            <a href="/sync-status">
+              <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Sync Health
+            </a>
+            <a href="/settings">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 0 0 4.93 19.07M4.93 4.93a10 10 0 0 0 14.14 14.14"/></svg>
+              Configuration
+            </a>
+            <a href="/support" class="active">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
+              Help &amp; Support
+            </a>
+          </nav>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-footer-version">Asset Sync v1.0</div>
+        </div>
       </aside>
 
+      <!-- ── Main area ── -->
       <div class="shell-main">
+
         <header class="topbar">
           <div class="topbar-left">
-            <button id="sidebar-toggle-btn" class="icon-btn" type="button">Menu</button>
+            <button id="sidebar-toggle-btn" class="menu-toggle" type="button" aria-label="Toggle sidebar">
+              <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
             <h1>Asset Sync Console</h1>
           </div>
         </header>
 
-        <main>
-          <section class="grid two">
-            <div class="card flow">
-              <div class="row spread">
-                <h2>Diagnostics Overview</h2>
-                <div class="row">
-                  <button id="run-diagnostics-btn" class="soft">Refresh Diagnostics</button>
-                  <button id="export-diagnostics-btn" class="soft">Download Diagnostics</button>
+        <div class="page-content">
+          <div class="page-header">
+            <div class="page-header-inner">
+              <div>
+                <div class="page-header-title">Help &amp; Support</div>
+                <div class="page-header-desc">Run diagnostics, test connectivity, and submit issue reports</div>
+              </div>
+            </div>
+          </div>
+
+          <main>
+
+            <!-- Diagnostics + Connectivity -->
+            <section class="grid two">
+              <div class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Diagnostics Overview</div>
+                    <div class="card-subtitle">System health and configuration summary</div>
+                  </div>
+                  <div class="card-actions">
+                    <button id="run-diagnostics-btn" class="soft btn-sm">
+                      <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                      Refresh
+                    </button>
+                    <button id="export-diagnostics-btn" class="ghost btn-sm">
+                      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Download
+                    </button>
+                  </div>
                 </div>
+                <pre id="diagnostics-viewer" class="event-list"></pre>
               </div>
-              <pre id="diagnostics-viewer" class="event-list"></pre>
-            </div>
 
-            <div class="card flow">
-              <h2>Connection Checks</h2>
-              <button id="connectivity-btn" class="soft">Run Connection Test</button>
-              <pre id="connectivity-output" class="event-list"></pre>
-            </div>
-          </section>
-
-          <section class="grid two">
-            <div class="card flow">
-              <h2>Safe Configuration View</h2>
-              <pre id="safe-config-viewer" class="event-list"></pre>
-            </div>
-            <div class="card flow">
-              <h2>Recent Items Needing Attention</h2>
-              <div id="failed-partial-activity" class="event-list"></div>
-            </div>
-          </section>
-
-          <section class="grid two">
-            <div class="card flow">
-              <h2>Report an Issue</h2>
-              <div class="row">
-                <input id="ticket-title" type="text" placeholder="Short issue title" />
+              <div class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Connection Checks</div>
+                    <div class="card-subtitle">Test live connectivity to source and destination</div>
+                  </div>
+                  <div class="card-actions">
+                    <button id="connectivity-btn" class="soft btn-sm">
+                      <svg viewBox="0 0 24 24"><path d="M1.42 9a16 16 0 0 1 21.16 0M5 12.55a11 11 0 0 1 14.08 0M10.71 17.4a1 1 0 0 1 2.62 0M12 20h.01"/></svg>
+                      Run Test
+                    </button>
+                  </div>
+                </div>
+                <pre id="connectivity-output" class="event-list"></pre>
               </div>
-              <div class="row">
-                <textarea
-                  id="ticket-description"
-                  placeholder="What happened and what did you expect?"
-                ></textarea>
-              </div>
-              <div class="row">
-                <select id="ticket-priority">
-                  <option value="low">Low</option>
-                  <option value="normal" selected>Normal</option>
-                  <option value="high">High</option>
-                </select>
-                <button id="submit-ticket-btn" class="primary">Send Report</button>
-              </div>
-              <p id="ticket-message" class="muted"></p>
-            </div>
+            </section>
 
-            <div class="card flow">
-              <h2>Recent Reports</h2>
-              <button id="load-tickets-btn" class="soft">Refresh Reports</button>
-              <div id="ticket-history" class="event-list"></div>
-            </div>
-          </section>
-        </main>
+            <!-- Config View + Attention Items -->
+            <section class="grid two">
+              <div class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Safe Configuration View</div>
+                    <div class="card-subtitle">Redacted config snapshot for sharing with support</div>
+                  </div>
+                </div>
+                <pre id="safe-config-viewer" class="event-list"></pre>
+              </div>
+
+              <div class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Items Needing Attention</div>
+                    <div class="card-subtitle">Recently failed or partial sync records</div>
+                  </div>
+                </div>
+                <div id="failed-partial-activity" class="event-list"></div>
+              </div>
+            </section>
+
+            <!-- Report + History -->
+            <section class="grid two">
+              <div class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Report an Issue</div>
+                    <div class="card-subtitle">Submit a support ticket to the operations team</div>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label class="field-label" for="ticket-title">Issue Title</label>
+                  <input id="ticket-title" type="text" placeholder="Briefly describe the problem" />
+                </div>
+
+                <div class="field mt-0">
+                  <label class="field-label" for="ticket-description">Description</label>
+                  <textarea
+                    id="ticket-description"
+                    placeholder="What happened? What did you expect? Include any relevant asset IDs or timestamps."
+                    class="textarea-md"
+                  ></textarea>
+                </div>
+
+                <div class="toolbar mt-0">
+                  <div class="toolbar-left">
+                    <label class="field-label field-label-inline" for="ticket-priority">Priority:</label>
+                    <select id="ticket-priority" class="select-auto">
+                      <option value="low">Low</option>
+                      <option value="normal" selected>Normal</option>
+                      <option value="high">High</option>
+                    </select>
+                  </div>
+                  <div class="toolbar-right">
+                    <button id="submit-ticket-btn" class="primary">
+                      <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                      Send Report
+                    </button>
+                  </div>
+                </div>
+
+                <p id="ticket-message" class="muted"></p>
+              </div>
+
+              <div class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Recent Reports</div>
+                    <div class="card-subtitle">Previously submitted support tickets</div>
+                  </div>
+                  <div class="card-actions">
+                    <button id="load-tickets-btn" class="soft btn-sm">
+                      <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+                <div id="ticket-history" class="event-list"></div>
+              </div>
+            </section>
+
+          </main>
+        </div>
       </div>
     </div>
 
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
-    <script src="/static/sidebar.js"></script>
-    <script src="/static/support.js"></script>
+    <script src="/static/sidebar.js?v=20260309c"></script>
+    <script src="/static/support.js?v=20260309c"></script>
   </body>
 </html>

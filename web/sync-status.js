@@ -55,8 +55,8 @@ function renderKpis(status, overview) {
     .map(
       (kpi) => `
       <div class="kpi">
-        <div class="muted">${kpi.label}</div>
-        <div class="value">${kpi.value}</div>
+        <div class="kpi-label">${kpi.label}</div>
+        <div class="kpi-value">${kpi.value}</div>
       </div>
     `
     )

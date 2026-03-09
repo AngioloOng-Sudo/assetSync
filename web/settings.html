@@ -3,93 +3,193 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Configuration - Asset Sync</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <title>Configuration — Asset Sync Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="/static/styles.css?v=20260309c" />
   </head>
   <body>
     <div class="app-shell">
+
+      <!-- ── Sidebar ── -->
       <aside id="dashboard-sidebar" class="sidebar">
-        <h2>Operator Console</h2>
-        <p class="muted">Source to destination asset sync</p>
-        <nav class="sidebar-nav">
-          <a href="/">Dashboard</a>
-          <a href="/sync-status">Sync Health</a>
-          <a href="/settings" class="active">Configuration</a>
-          <a href="/support">Help</a>
-        </nav>
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-icon">
+            <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM17 14v6M14 17h6"/></svg>
+          </div>
+          <div class="sidebar-brand-text">
+            <div class="sidebar-brand-name">Asset Sync</div>
+            <div class="sidebar-brand-sub">Operator Console</div>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-label">Navigation</div>
+          <nav class="sidebar-nav">
+            <a href="/">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              Dashboard
+            </a>
+            <a href="/sync-status">
+              <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Sync Health
+            </a>
+            <a href="/settings" class="active">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 0 0 4.93 19.07M4.93 4.93a10 10 0 0 0 14.14 14.14"/></svg>
+              Configuration
+            </a>
+            <a href="/support">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
+              Help &amp; Support
+            </a>
+          </nav>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-footer-version">Asset Sync v1.0</div>
+        </div>
       </aside>
 
+      <!-- ── Main area ── -->
       <div class="shell-main">
+
         <header class="topbar">
           <div class="topbar-left">
-            <button id="sidebar-toggle-btn" class="icon-btn" type="button">Menu</button>
+            <button id="sidebar-toggle-btn" class="menu-toggle" type="button" aria-label="Toggle sidebar">
+              <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
             <h1>Asset Sync Console</h1>
           </div>
-          <div class="row">
-            <button id="settings-logout-btn" class="soft" type="button" style="display:none;">Lock Settings</button>
+          <div class="topbar-right">
+            <button id="settings-logout-btn" class="topbar-btn" type="button" hidden>
+              <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span class="topbar-label">Lock Settings</span>
+            </button>
           </div>
         </header>
 
-        <main>
-          <section id="settings-auth-card" class="card flow" style="display:none;">
-            <h2>Unlock Configuration</h2>
-            <p class="muted">Enter your dashboard password to view and edit settings.</p>
-            <div class="row">
-              <input id="settings-password" type="password" placeholder="Dashboard password" />
-              <button id="settings-login-btn" class="primary" type="button">Unlock</button>
+        <div class="page-content">
+          <div class="page-header">
+            <div class="page-header-inner">
+              <div>
+                <div class="page-header-title">Configuration</div>
+                <div class="page-header-desc">Manage connection credentials, environment variables, and system settings</div>
+              </div>
             </div>
-            <p id="settings-auth-message" class="muted"></p>
-          </section>
+          </div>
 
-          <div id="settings-content">
-            <section class="card flow">
-              <div class="row spread">
-                <h2>Core Connection Settings</h2>
-                <div class="row">
-                  <label for="secret-toggle">Show sensitive values</label>
-                  <input id="secret-toggle" type="checkbox" />
+          <main>
+            <!-- Auth gate (shown when locked) -->
+            <section id="settings-auth-card" class="card flow auth-card" hidden>
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Unlock Configuration</div>
+                  <div class="card-subtitle">Authentication required to view and edit settings</div>
                 </div>
               </div>
-              <p class="muted">These values control source and destination connectivity.</p>
-              <div id="core-env-grid" class="grid two"></div>
-            </section>
-
-            <section class="card flow">
-              <h2>Extra Configuration</h2>
-              <div style="overflow:auto;">
-                <table id="additional-env-table">
-                  <thead>
-                    <tr>
-                      <th>Key</th>
-                      <th>Value</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-              <button id="add-env-row-btn" class="soft">Add Setting</button>
-            </section>
-
-            <section class="card flow">
-              <h2>Advanced .env Editor</h2>
-              <p class="muted">Use this for direct key/value editing.</p>
-              <textarea id="env-editor" spellcheck="false"></textarea>
+              <p class="muted">Enter your dashboard password to continue.</p>
               <div class="row">
-                <button id="reload-env-btn" class="soft">Reload File</button>
-                <button id="save-env-btn" class="primary">Save Changes</button>
-                <button id="test-notify-btn" class="soft">Send Test Notification</button>
+                <input id="settings-password" class="input-grow" type="password" placeholder="Dashboard password" />
+                <button id="settings-login-btn" class="primary" type="button">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  Unlock
+                </button>
               </div>
-              <p id="settings-message" class="muted"></p>
+              <p id="settings-auth-message" class="muted"></p>
             </section>
-          </div>
-        </main>
+
+            <!-- Settings content (shown when unlocked) -->
+            <div id="settings-content">
+
+              <!-- Core Connections -->
+              <section class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Core Connection Settings</div>
+                    <div class="card-subtitle">Source and destination system credentials</div>
+                  </div>
+                  <div class="card-actions">
+                    <label class="check-label check-label-sm" for="secret-toggle">
+                      <input id="secret-toggle" type="checkbox" />
+                      Show sensitive values
+                    </label>
+                  </div>
+                </div>
+                <p class="muted">These values control connectivity to Kaseya (source) and Revnue (destination).</p>
+                <div id="core-env-grid" class="grid two"></div>
+              </section>
+
+              <!-- Extra Config Table -->
+              <section class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Additional Configuration</div>
+                    <div class="card-subtitle">Custom key-value environment settings</div>
+                  </div>
+                  <div class="card-actions">
+                    <button id="add-env-row-btn" class="soft btn-sm">
+                      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      Add Setting
+                    </button>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table id="additional-env-table">
+                    <thead>
+                      <tr>
+                        <th>Key</th>
+                        <th>Value</th>
+                        <th class="table-col-action">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </section>
+
+              <!-- Advanced .env Editor -->
+              <section class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Advanced .env Editor</div>
+                    <div class="card-subtitle">Direct key=value file editor — use with care</div>
+                  </div>
+                </div>
+                <div class="alert info mt-0">
+                  <svg class="alert-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  Changes here directly modify the <code>.env</code> file. Ensure keys are correct before saving.
+                </div>
+                <textarea id="env-editor" spellcheck="false"></textarea>
+                <div class="toolbar mt-0">
+                  <div class="toolbar-left">
+                    <button id="reload-env-btn" class="ghost btn-sm">
+                      <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                      Reload File
+                    </button>
+                    <button id="test-notify-btn" class="ghost btn-sm">
+                      <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                      Test Notification
+                    </button>
+                  </div>
+                  <div class="toolbar-right">
+                    <button id="save-env-btn" class="primary">
+                      <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                      Save Changes
+                    </button>
+                  </div>
+                </div>
+                <p id="settings-message" class="muted"></p>
+              </section>
+
+            </div><!-- /settings-content -->
+          </main>
+        </div>
       </div>
     </div>
 
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
-    <script src="/static/sidebar.js"></script>
-    <script src="/static/settings.js"></script>
+    <script src="/static/sidebar.js?v=20260309c"></script>
+    <script src="/static/settings.js?v=20260309c"></script>
   </body>
 </html>

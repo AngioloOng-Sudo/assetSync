@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import io
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 
 from backend.models.schemas import AutosyncStateRequest, MarkReadRequest, TransferRequest
@@ -45,7 +45,10 @@ def get_kaseya_assets(
     page_size: int = Query(default=10, ge=1, le=100),
     only_missing: bool = Query(default=False),
 ) -> dict:
-    assets = fetch_kaseya_assets()
+    try:
+        assets = fetch_kaseya_assets()
+    except Exception as exc:  # upstream/network/auth errors
+        raise HTTPException(status_code=502, detail=f"Kaseya API request failed: {exc}") from exc
     if only_missing:
         revnue_assets = fetch_all_revnue_assets(company=None)
         matched = {

@@ -3,179 +3,318 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Asset Sync Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <title>Dashboard — Asset Sync Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="/static/styles.css?v=20260309c" />
   </head>
   <body>
     <div class="app-shell">
+
+      <!-- ── Sidebar ── -->
       <aside id="dashboard-sidebar" class="sidebar">
-        <h2>Operator Console</h2>
-        <p class="muted">Source to destination asset sync</p>
-        <nav class="sidebar-nav">
-          <a href="/" class="active">Dashboard</a>
-          <a href="/sync-status">Sync Health</a>
-          <a href="/settings">Configuration</a>
-          <a href="/support">Help</a>
-        </nav>
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-icon">
+            <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM17 14v6M14 17h6"/></svg>
+          </div>
+          <div class="sidebar-brand-text">
+            <div class="sidebar-brand-name">Asset Sync</div>
+            <div class="sidebar-brand-sub">Operator Console</div>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-label">Navigation</div>
+          <nav class="sidebar-nav">
+            <a href="/" class="active">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              Dashboard
+            </a>
+            <a href="/sync-status">
+              <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Sync Health
+            </a>
+            <a href="/settings">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 0 0 4.93 19.07M4.93 4.93a10 10 0 0 0 14.14 14.14"/></svg>
+              Configuration
+            </a>
+            <a href="/support">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
+              Help &amp; Support
+            </a>
+          </nav>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-footer-version">Asset Sync v1.0</div>
+        </div>
       </aside>
 
+      <!-- ── Main area ── -->
       <div class="shell-main">
+
+        <!-- Topbar -->
         <header class="topbar">
           <div class="topbar-left">
-            <button id="sidebar-toggle-btn" class="icon-btn" type="button">Menu</button>
+            <button id="sidebar-toggle-btn" class="menu-toggle" type="button" aria-label="Toggle sidebar">
+              <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
             <h1>Asset Sync Console</h1>
           </div>
-          <div class="row">
-            <button id="autosync-navbar-toggle" class="soft" type="button">Auto Sync: Off</button>
-            <button id="open-activity-btn" class="soft" type="button">
-              Updates <span id="activity-unread-badge" class="badge">0</span>
+          <div class="topbar-right">
+            <button id="autosync-navbar-toggle" class="topbar-btn" type="button">
+              <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span class="topbar-label">Auto Sync: Off</span>
+            </button>
+            <button id="open-activity-btn" class="topbar-btn" type="button">
+              <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <span class="topbar-label">Updates</span>
+              <span id="activity-unread-badge" class="badge">0</span>
             </button>
           </div>
         </header>
 
-        <main>
-          <section class="card flow">
-            <div class="row spread">
-              <div class="row">
-                <button id="refresh-data-btn" class="soft">Refresh Data</button>
-                <button id="run-reconcile-btn" class="soft">Sync Now</button>
-                <button id="export-csv-btn" class="soft">Export CSV</button>
+        <div class="page-content">
+          <!-- Page header -->
+          <div class="page-header">
+            <div class="page-header-inner">
+              <div>
+                <div class="page-header-title">Dashboard</div>
+                <div class="page-header-desc">Browse and synchronise assets from Kaseya to your destination system</div>
               </div>
-              <div class="row">
-                <label for="only-missing-toggle">Show only assets not yet in destination</label>
-                <input id="only-missing-toggle" type="checkbox" />
+              <div class="page-header-actions">
+                <button id="refresh-data-btn" class="soft">
+                  <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  Refresh Data
+                </button>
+                <button id="run-reconcile-btn" class="soft">
+                  <svg viewBox="0 0 24 24"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  Sync Now
+                </button>
+                <button id="export-csv-btn" class="ghost">
+                  <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Export CSV
+                </button>
               </div>
             </div>
-            <div id="sync-run-status" class="muted">No manual sync has been started in this session.</div>
-          </section>
+          </div>
 
-          <section class="grid two">
-            <div class="card flow">
-              <h2>Source Assets (Kaseya)</h2>
-              <div class="row">
-                <input
-                  id="kaseya-search"
-                  type="search"
-                  placeholder="Search by identifier, name, maker, or model..."
-                />
-                <button id="kaseya-search-btn">Search</button>
-              </div>
-              <div class="row spread">
-                <div class="muted">Choose source assets and sync them to destination.</div>
-                <div class="row">
-                  <button id="preview-selected-btn" class="soft">Preview Selected</button>
-                  <button id="transfer-selected-btn" class="primary">Sync Selected</button>
+          <main>
+            <!-- Sync Status Bar -->
+            <section class="card flow">
+              <div class="toolbar">
+                <div class="toolbar-left">
+                  <label class="check-label" for="only-missing-toggle">
+                    <input id="only-missing-toggle" type="checkbox" />
+                    Show only assets not yet in destination
+                  </label>
+                </div>
+                <div class="toolbar-right">
+                  <div id="sync-run-status" class="muted">No manual sync has been started in this session.</div>
                 </div>
               </div>
-              <div style="overflow:auto;">
-                <table id="kaseya-table">
-                  <thead>
-                    <tr>
-                      <th><input id="kaseya-select-all" type="checkbox" /></th>
-                      <th>Identifier</th>
-                      <th>Name</th>
-                      <th>Manufacturer</th>
-                      <th>Model</th>
-                      <th>Last Updated</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-              <div class="row spread">
-                <button id="kaseya-prev-btn">Previous</button>
-                <span id="kaseya-page-label" class="muted">Page 1</span>
-                <button id="kaseya-next-btn">Next</button>
-              </div>
-            </div>
+            </section>
 
-            <div class="card flow">
-              <h2>Destination Assets (Strev/Revnue)</h2>
+            <!-- Asset Panels -->
+            <section class="grid two">
+              <!-- Source: Kaseya -->
+              <div class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Source Assets</div>
+                    <div class="card-subtitle">Kaseya</div>
+                  </div>
+                  <div class="card-actions">
+                    <button id="preview-selected-btn" class="soft btn-sm">Preview</button>
+                    <button id="transfer-selected-btn" class="primary btn-sm">
+                      <svg viewBox="0 0 24 24"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                      Sync Selected
+                    </button>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <input
+                    id="kaseya-search"
+                    type="search"
+                    placeholder="Search identifier, name, manufacturer, model…"
+                    class="input-grow"
+                  />
+                  <button id="kaseya-search-btn" class="btn-sm">
+                    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    Search
+                  </button>
+                </div>
+
+                <p class="muted mt-0">Select source assets to sync them to the destination system.</p>
+
+                <div class="table-wrap">
+                  <table id="kaseya-table">
+                    <thead>
+                      <tr>
+                        <th class="table-col-checkbox"><input id="kaseya-select-all" type="checkbox" /></th>
+                        <th>Identifier</th>
+                        <th>Name</th>
+                        <th>Manufacturer</th>
+                        <th>Model</th>
+                        <th>Last Updated</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+
+                <div class="pagination">
+                  <span id="kaseya-page-label" class="pagination-info">Page 1</span>
+                  <div class="pagination-controls">
+                    <button id="kaseya-prev-btn" class="btn-sm">
+                      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                      Prev
+                    </button>
+                    <button id="kaseya-next-btn" class="btn-sm">
+                      Next
+                      <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Destination: Revnue -->
+              <div class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Destination Assets</div>
+                    <div class="card-subtitle">Strev / Revnue</div>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <input
+                    id="revnue-search"
+                    type="search"
+                    placeholder="Search serial number, tag, or name…"
+                    class="input-grow"
+                  />
+                  <button id="revnue-search-btn" class="btn-sm">
+                    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    Search
+                  </button>
+                </div>
+
+                <div class="table-wrap">
+                  <table id="revnue-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Serial Number</th>
+                        <th>Asset Tag</th>
+                        <th>Name</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+
+                <div class="pagination">
+                  <span id="revnue-page-label" class="pagination-info">Page 1</span>
+                  <div class="pagination-controls">
+                    <button id="revnue-prev-btn" class="btn-sm">
+                      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                      Prev
+                    </button>
+                    <button id="revnue-next-btn" class="btn-sm">
+                      Next
+                      <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Sync Results -->
+            <section class="card flow">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Sync Results</div>
+                  <div class="card-subtitle">Output from the most recent sync operation</div>
+                </div>
+              </div>
+              <div id="transfer-summary" class="transfer-summary">
+                No sync operation has been run in this session.
+              </div>
+            </section>
+
+            <!-- Activity History -->
+            <section class="card flow">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Asset Activity History</div>
+                  <div class="card-subtitle">View per-asset sync history by identifier</div>
+                </div>
+              </div>
               <div class="row">
                 <input
-                  id="revnue-search"
-                  type="search"
-                  placeholder="Search by serial number, tag, or name..."
+                  id="history-identifier"
+                  type="text"
+                  placeholder="Enter asset identifier — e.g. GSIS-001"
+                  class="input-grow"
                 />
-                <button id="revnue-search-btn">Search</button>
+                <button id="history-load-btn" class="soft">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  View History
+                </button>
               </div>
-              <div style="overflow:auto;">
-                <table id="revnue-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Serial Number</th>
-                      <th>Asset Tag</th>
-                      <th>Name</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-              <div class="row spread">
-                <button id="revnue-prev-btn">Previous</button>
-                <span id="revnue-page-label" class="muted">Page 1</span>
-                <button id="revnue-next-btn">Next</button>
-              </div>
-            </div>
-          </section>
+              <div id="history-list" class="event-list"></div>
+            </section>
 
-          <section class="card flow">
-            <h2>Sync Results</h2>
-            <div id="transfer-summary" class="transfer-summary muted">
-              No sync action has been run in this session.
-            </div>
-          </section>
-
-          <section class="card flow">
-            <h2>Asset Activity History</h2>
-            <div class="row">
-              <input
-                id="history-identifier"
-                type="text"
-                placeholder="Enter asset identifier (example: GSIS-001)"
-              />
-              <button id="history-load-btn" class="soft">View History</button>
-            </div>
-            <div id="history-list" class="event-list"></div>
-          </section>
-
-          <p class="footer-note">
-            Matching rule: source <code>Identifier</code> must exactly match destination
-            <code>serial_number</code> or <code>asset_tag</code>.
-          </p>
-        </main>
-      </div>
-    </div>
-
-    <div id="transfer-modal" class="modal" aria-hidden="true">
-      <div class="modal-content">
-        <h3>Confirm Sync</h3>
-        <p id="transfer-modal-text">Sync selected assets to the destination system?</p>
-        <div class="row">
-          <button id="confirm-transfer-btn" class="primary">Start Sync</button>
-          <button id="cancel-transfer-btn">Cancel</button>
+            <p class="footer-note">
+              Matching rule: source <code>Identifier</code> → destination <code>serial_number</code> or <code>asset_tag</code> (exact match required).
+            </p>
+          </main>
         </div>
       </div>
     </div>
 
-    <div id="activity-modal" class="modal" aria-hidden="true">
-      <div class="modal-content" style="width:min(900px,100%)">
-        <div class="row spread">
-          <h3>Activity Feed</h3>
+    <!-- ── Confirm Sync Modal ── -->
+    <div id="transfer-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="transfer-modal-title">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title" id="transfer-modal-title">Confirm Sync</h2>
+        </div>
+        <div class="modal-body">
+          <p id="transfer-modal-text">Sync the selected assets to the destination system?</p>
+        </div>
+        <div class="modal-footer">
+          <button id="cancel-transfer-btn">Cancel</button>
+          <button id="confirm-transfer-btn" class="primary">
+            <svg viewBox="0 0 24 24"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Start Sync
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Activity Feed Modal ── -->
+    <div id="activity-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="activity-modal-title">
+      <div class="modal-content modal-content-lg">
+        <div class="modal-header">
+          <h2 class="modal-title" id="activity-modal-title">Activity Feed</h2>
           <div class="row">
-            <button id="mark-activity-read-btn" class="soft">Mark All Seen</button>
-            <button id="close-activity-btn">Close</button>
+            <button id="mark-activity-read-btn" class="soft btn-sm">Mark All Seen</button>
+            <button id="close-activity-btn" class="ghost btn-sm">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Close
+            </button>
           </div>
         </div>
-        <div class="grid two">
+        <div class="grid two modal-grid">
           <div>
-            <h4>Alerts</h4>
+            <div class="section-title">Alerts</div>
             <div id="activity-notifications" class="activity-list"></div>
           </div>
           <div>
-            <h4>Updates</h4>
+            <div class="section-title">Updates</div>
             <div id="activity-messages" class="activity-list"></div>
           </div>
         </div>
@@ -184,7 +323,7 @@
 
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
-    <script src="/static/sidebar.js"></script>
-    <script src="/static/app.js"></script>
+    <script src="/static/sidebar.js?v=20260309c"></script>
+    <script src="/static/app.js?v=20260309c"></script>
   </body>
 </html>

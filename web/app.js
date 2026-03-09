@@ -62,9 +62,13 @@ function formatStatusLabel(value) {
 
 function setAutosyncButton(enabled) {
   const button = $("autosync-navbar-toggle");
-  button.textContent = `Auto Sync: ${enabled ? "On" : "Off"}`;
-  button.classList.toggle("primary", enabled);
-  button.classList.toggle("soft", !enabled);
+  if (!button) return;
+  const label = button.querySelector(".topbar-label");
+  if (label) {
+    label.textContent = `Auto Sync: ${enabled ? "On" : "Off"}`;
+  }
+  button.classList.toggle("is-on", enabled);
+  button.setAttribute("aria-pressed", enabled ? "true" : "false");
 }
 
 function setSyncRunStatus(message) {
@@ -460,6 +464,8 @@ function bindEvents() {
       if (!id) return;
       if (check) state.selectedIdentifiers.add(id);
       else state.selectedIdentifiers.delete(id);
+      const row = box.closest("tr");
+      if (row) row.classList.toggle("selected", check);
     });
   });
 
