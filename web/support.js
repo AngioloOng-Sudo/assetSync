@@ -44,6 +44,85 @@ function formatLevelLabel(value) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+const CONNECTIVITY_TARGETS = [
+  { key: "kaseya", label: "Kaseya API" },
+  { key: "revnue", label: "Revnue API" },
+];
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function connectivityStatus(result) {
+  if (!result) return { tone: "neutral", label: "Not checked" };
+  const mode = String(result.mode || "").toLowerCase();
+  const error = String(result.error || "").toLowerCase();
+  if (mode === "mock") return { tone: "info", label: "Mock mode" };
+  if (result.reachable) return { tone: "success", label: "Connected" };
+  if (error.includes("circuit_open")) return { tone: "warning", label: "Circuit open" };
+  if (error.includes("missing_credentials")) return { tone: "warning", label: "Missing credentials" };
+  if (error.includes("missing_url")) return { tone: "warning", label: "Missing endpoint" };
+  return { tone: "error", label: "Unavailable" };
+}
+
+function connectivityDetails(result) {
+  if (!result) return "No connectivity result returned.";
+  if (result.error) return String(result.error);
+  if (result.reachable) return "Connection test succeeded.";
+  return "Connection test failed.";
+}
+
+function renderConnectivityStatus(results) {
+  const container = $("connectivity-status");
+  if (!container) return;
+
+  if (!results || typeof results !== "object") {
+    container.innerHTML = `<div class="connectivity-status-empty">Connectivity data is unavailable.</div>`;
+    return;
+  }
+
+  container.innerHTML = CONNECTIVITY_TARGETS.map(({ key, label }) => {
+    const result = results[key] || null;
+    const status = connectivityStatus(result);
+    const mode = result?.mode ? String(result.mode).toUpperCase() : "-";
+    const statusCode = result?.status_code != null ? String(result.status_code) : "-";
+    const endpoint = result?.url || result?.target || "-";
+    const detail = connectivityDetails(result);
+
+    return `
+      <article class="connectivity-status-card ${status.tone}">
+        <div class="connectivity-status-head">
+          <div class="connectivity-service">${escapeHtml(label)}</div>
+          <span class="pill ${status.tone}">${escapeHtml(status.label)}</span>
+        </div>
+        <dl class="connectivity-meta">
+          <div>
+            <dt>Mode</dt>
+            <dd>${escapeHtml(mode)}</dd>
+          </div>
+          <div>
+            <dt>HTTP</dt>
+            <dd>${escapeHtml(statusCode)}</dd>
+          </div>
+          <div>
+            <dt>Endpoint</dt>
+            <dd class="mono">${escapeHtml(endpoint)}</dd>
+          </div>
+          <div>
+            <dt>Details</dt>
+            <dd>${escapeHtml(detail)}</dd>
+          </div>
+        </dl>
+      </article>
+    `;
+  }).join("");
+}
+
 function renderFailedPartialActivity(items) {
   const container = $("failed-partial-activity");
   if (!items || !items.length) {
@@ -73,8 +152,19 @@ async function loadDiagnostics() {
 }
 
 async function runConnectivity() {
-  const data = await apiFetch("/api/support/checks");
-  $("connectivity-output").textContent = JSON.stringify(data, null, 2);
+  try {
+    const data = await apiFetch("/api/support/checks");
+    const results = data.results || {};
+    renderConnectivityStatus(results);
+    $("connectivity-output").textContent = JSON.stringify(results, null, 2);
+  } catch (error) {
+    const fallbackResults = Object.fromEntries(
+      CONNECTIVITY_TARGETS.map(({ key }) => [key, { reachable: false, mode: "live", error: error.message }])
+    );
+    renderConnectivityStatus(fallbackResults);
+    $("connectivity-output").textContent = error.message;
+    throw error;
+  }
 }
 
 async function submitTicket() {

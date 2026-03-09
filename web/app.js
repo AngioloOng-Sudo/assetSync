@@ -1,10 +1,22 @@
 const state = {
-  kaseya: { page: 1, pageSize: 8, search: "", totalPages: 1 },
+  kaseya: { page: 1, pageSize: 8, search: "", totalPages: 1, coverageFilter: "all", lastUpdatedBefore: "" },
   revnue: { page: 1, pageSize: 8, search: "", totalPages: 1 },
   selectedIdentifiers: new Set(),
   onlyMissing: false,
   logs: { notifications: [], messages: [], unreadCount: 0 },
+  coverage: { items: [], staleDays: 7 },
+  dryRun: { previewViewed: false, previewSyncReady: false, identifiers: [], selectionKey: "" },
 };
+
+const COVERAGE_CARD_META = {
+  total: { valueId: "coverage-total-value", subId: "coverage-total-sub" },
+  synced: { valueId: "coverage-synced-value", subId: "coverage-synced-sub" },
+  missing: { valueId: "coverage-missing-value", subId: "coverage-missing-sub" },
+  stale: { valueId: "coverage-stale-value", subId: "coverage-stale-sub" },
+  failed: { valueId: "coverage-failed-value", subId: "coverage-failed-sub" },
+};
+
+let coverageFetchPromise = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -77,6 +89,356 @@ function setSyncRunStatus(message) {
   status.textContent = message;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function setSelectionValidation(message = "") {
+  const element = $("selection-validation-message");
+  if (!element) return;
+  element.textContent = message;
+  element.classList.toggle("text-danger", !!message);
+}
+
+function currentSelectionIdentifiers() {
+  return Array.from(state.selectedIdentifiers).sort();
+}
+
+function selectionKey(identifiers) {
+  return identifiers.join("|");
+}
+
+function resetDryRunState() {
+  state.dryRun.previewViewed = false;
+  state.dryRun.previewSyncReady = false;
+  state.dryRun.identifiers = [];
+  state.dryRun.selectionKey = "";
+}
+
+function refreshDryRunSelectionState() {
+  const currentKey = selectionKey(currentSelectionIdentifiers());
+  if (state.dryRun.selectionKey && state.dryRun.selectionKey !== currentKey) {
+    resetDryRunState();
+  }
+  updateDryRunConfirmVisibility();
+}
+
+function setCoverageCard(metric, value, subtitle) {
+  const meta = COVERAGE_CARD_META[metric];
+  if (!meta) return;
+  const valueEl = $(meta.valueId);
+  const subEl = $(meta.subId);
+  if (valueEl) valueEl.textContent = String(value);
+  if (subEl) subEl.textContent = subtitle;
+}
+
+function setCoverageLoading() {
+  setCoverageCard("total", "—", "Loading coverage...");
+  setCoverageCard("synced", "—", "Loading coverage...");
+  setCoverageCard("missing", "—", "Loading coverage...");
+  setCoverageCard("stale", "—", "Loading coverage...");
+  setCoverageCard("failed", "—", "Loading coverage...");
+}
+
+function updateCoverageCardSelection() {
+  document.querySelectorAll("[data-coverage-filter]").forEach((card) => {
+    const filter = card.getAttribute("data-coverage-filter") || "";
+    let isActive = state.kaseya.coverageFilter === filter;
+    if (filter === "missing") {
+      isActive = state.onlyMissing && state.kaseya.coverageFilter === "missing";
+    }
+    card.classList.toggle("stat-card--active", isActive);
+  });
+}
+
+function parseIsoTimestamp(value) {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isStaleAsset(asset, cutoffMs) {
+  const modifiedMs = parseIsoTimestamp(asset?.ModifiedDate);
+  if (modifiedMs === null) return false;
+  return modifiedMs < cutoffMs;
+}
+
+function matchesKaseyaSearch(asset, searchText) {
+  if (!searchText) return true;
+  return (
+    (asset?.Identifier || "").toLowerCase().includes(searchText) ||
+    (asset?.Name || "").toLowerCase().includes(searchText) ||
+    (asset?.Manufacturer || "").toLowerCase().includes(searchText) ||
+    (asset?.Model || "").toLowerCase().includes(searchText)
+  );
+}
+
+function hasFailureSignal(entry) {
+  const candidates = [
+    entry?.last_sync_status,
+    entry?.sync_status,
+    entry?.match_status,
+    entry?.kaseya_asset?.last_sync_status,
+    entry?.kaseya_asset?.sync_status,
+  ];
+  return candidates.some((candidate) => {
+    const value = String(candidate || "").toLowerCase();
+    return value.includes("failed") || value.includes("error") || value.includes("partial");
+  });
+}
+
+function paginateItems(items, page, pageSize) {
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const normalizedPage = Math.min(Math.max(page, 1), totalPages);
+  const start = (normalizedPage - 1) * pageSize;
+  return {
+    items: items.slice(start, start + pageSize),
+    page: normalizedPage,
+    totalPages,
+    total,
+  };
+}
+
+async function fetchCoverageComparison(forceRefresh = false) {
+  if (forceRefresh) {
+    state.coverage.items = [];
+  }
+  if (state.coverage.items.length && !forceRefresh) {
+    return state.coverage.items;
+  }
+  if (coverageFetchPromise) {
+    return coverageFetchPromise;
+  }
+  coverageFetchPromise = apiFetch("/api/assets/compare")
+    .then((data) => {
+      state.coverage.items = Array.isArray(data.items) ? data.items : [];
+      return state.coverage.items;
+    })
+    .finally(() => {
+      coverageFetchPromise = null;
+    });
+  return coverageFetchPromise;
+}
+
+function filterCoverageAssets(comparisonItems) {
+  const searchText = state.kaseya.search.trim().toLowerCase();
+  const staleCutoffMs =
+    parseIsoTimestamp(state.kaseya.lastUpdatedBefore) ??
+    Date.now() - state.coverage.staleDays * 24 * 60 * 60 * 1000;
+
+  return comparisonItems
+    .filter((entry) => {
+      const status = String(entry.match_status || "").toLowerCase();
+      if (state.kaseya.coverageFilter === "synced" && status !== "matched") {
+        return false;
+      }
+      if (state.kaseya.coverageFilter === "failed" && !hasFailureSignal(entry)) {
+        return false;
+      }
+      if (state.kaseya.coverageFilter === "stale" && !isStaleAsset(entry.kaseya_asset, staleCutoffMs)) {
+        return false;
+      }
+      if (state.onlyMissing && status !== "missing_in_revnue") {
+        return false;
+      }
+      return true;
+    })
+    .map((entry) => entry.kaseya_asset || {})
+    .filter((asset) => !!asset.Identifier)
+    .filter((asset) => matchesKaseyaSearch(asset, searchText));
+}
+
+function applyCoverageFilter(filter) {
+  const staleCutoffIso = new Date(Date.now() - state.coverage.staleDays * 24 * 60 * 60 * 1000).toISOString();
+  if (filter === "missing") {
+    state.onlyMissing = true;
+    state.kaseya.coverageFilter = "missing";
+    state.kaseya.lastUpdatedBefore = "";
+  } else if (filter === "stale") {
+    state.onlyMissing = false;
+    state.kaseya.coverageFilter = "stale";
+    state.kaseya.lastUpdatedBefore = staleCutoffIso;
+  } else if (filter === "synced") {
+    state.onlyMissing = false;
+    state.kaseya.coverageFilter = "synced";
+    state.kaseya.lastUpdatedBefore = "";
+  } else if (filter === "failed") {
+    state.onlyMissing = false;
+    state.kaseya.coverageFilter = "failed";
+    state.kaseya.lastUpdatedBefore = "";
+  } else {
+    state.onlyMissing = false;
+    state.kaseya.coverageFilter = "all";
+    state.kaseya.lastUpdatedBefore = "";
+  }
+
+  $("only-missing-toggle").checked = state.onlyMissing;
+  state.kaseya.page = 1;
+  updateCoverageCardSelection();
+  withLoading(loadKaseyaAssets);
+}
+
+function diffActionLabel(action, status) {
+  const normalizedAction = String(action || "").toLowerCase();
+  if (normalizedAction === "created" || normalizedAction === "create") return "Create";
+  if (normalizedAction === "updated" || normalizedAction === "update") return "Update";
+  if (normalizedAction === "skipped" || normalizedAction === "skip" || normalizedAction === "unchanged") return "Skip";
+  if (normalizedAction === "error") return "Error";
+  const normalizedStatus = String(status || "").toLowerCase();
+  if (normalizedStatus === "failed" || normalizedStatus === "error") return "Error";
+  return "Skip";
+}
+
+function diffRowClass(action, status) {
+  const label = diffActionLabel(action, status).toLowerCase();
+  if (label === "create") return "diff-create";
+  if (label === "update") return "diff-update";
+  if (label === "error") return "diff-error";
+  return "diff-skip";
+}
+
+function normalizeDiffEntries(entry) {
+  const notesPreview = entry?.notes?.diff_preview;
+  if (Array.isArray(notesPreview)) {
+    return notesPreview.map((item) => ({
+      field: item.field ?? item.key ?? "",
+      before: item.before,
+      after: item.after,
+    }));
+  }
+
+  if (notesPreview && typeof notesPreview === "object") {
+    return Object.entries(notesPreview).map(([field, value]) => ({
+      field,
+      before: value && typeof value === "object" ? value.before : "",
+      after: value && typeof value === "object" ? value.after : value,
+    }));
+  }
+
+  const fieldDiffs = Array.isArray(entry?.field_diffs) ? entry.field_diffs : [];
+  return fieldDiffs.map((item) => ({
+    field: item.field ?? item.key ?? "",
+    before: item.before,
+    after: item.after,
+  }));
+}
+
+function formatDiffValue(value) {
+  if (value === null || value === undefined || value === "") return "(empty)";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function renderDiffCell(entry) {
+  const diffs = normalizeDiffEntries(entry);
+  if (diffs.length) {
+    return diffs
+      .map(
+        (item) => `
+      <div class="diff-field-row">
+        <span class="mono">${escapeHtml(item.field || "-")}</span>:
+        <span class="diff-before">${escapeHtml(formatDiffValue(item.before))}</span>
+        <span>&rarr;</span>
+        <span class="diff-after">${escapeHtml(formatDiffValue(item.after))}</span>
+      </div>
+    `
+      )
+      .join("");
+  }
+
+  if (entry?.error) {
+    return `<div class="diff-field-row"><span class="diff-before">${escapeHtml(entry.error)}</span></div>`;
+  }
+  return `<span class="muted">No field changes</span>`;
+}
+
+function openDryRunModal() {
+  const modal = $("dry-run-modal");
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+  state.dryRun.previewViewed = true;
+  updateDryRunConfirmVisibility();
+}
+
+function closeDryRunModal() {
+  const modal = $("dry-run-modal");
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function updateDryRunConfirmVisibility() {
+  const button = $("confirm-dry-run-btn");
+  const showConfirm = state.dryRun.previewViewed && state.dryRun.previewSyncReady;
+  button.hidden = !showConfirm;
+  button.disabled = !showConfirm;
+}
+
+function renderDryRunPreview(result, identifiers) {
+  const tableWrap = $("dry-run-table-wrap");
+  const emptyState = $("dry-run-empty");
+  const tbody = $("dry-run-table-body");
+  const summary = $("dry-run-summary");
+  const rows = Array.isArray(result?.results) ? result.results : [];
+  const changed = rows.filter((entry) => {
+    const action = String(entry?.action || "").toLowerCase();
+    return action === "created" || action === "updated" || action === "create" || action === "update";
+  });
+
+  state.dryRun.identifiers = identifiers.slice();
+  state.dryRun.selectionKey = selectionKey(identifiers);
+  state.dryRun.previewSyncReady = changed.length > 0;
+  state.dryRun.previewViewed = false;
+  updateDryRunConfirmVisibility();
+
+  if (!rows.length || !changed.length) {
+    tableWrap.hidden = true;
+    emptyState.hidden = false;
+    tbody.innerHTML = "";
+    summary.textContent = "Nothing to sync. Dry run returned no create/update operations.";
+    return;
+  }
+
+  tableWrap.hidden = false;
+  emptyState.hidden = true;
+  summary.textContent = `Preview generated for ${identifiers.length} selected asset(s). Review changes before confirming sync.`;
+
+  tbody.innerHTML = rows
+    .map((entry) => {
+      const diffs = normalizeDiffEntries(entry);
+      const actionLabel = diffActionLabel(entry.action, entry.status);
+      return `
+      <tr class="${diffRowClass(entry.action, entry.status)}">
+        <td class="mono">${escapeHtml(entry.identifier || "-")}</td>
+        <td>${escapeHtml(actionLabel)}</td>
+        <td>${diffs.length}</td>
+        <td>${renderDiffCell(entry)}</td>
+      </tr>
+    `;
+    })
+    .join("");
+}
+
+async function runDryRunPreview() {
+  const identifiers = currentSelectionIdentifiers();
+  if (!identifiers.length) {
+    setSelectionValidation("Select at least one source asset to preview.");
+    return;
+  }
+  setSelectionValidation("");
+  const result = await apiFetch("/api/transfer", {
+    method: "POST",
+    body: JSON.stringify({ identifiers, dry_run: true }),
+  });
+  renderDryRunPreview(result, identifiers);
+  openDryRunModal();
+  notify("Preview generated. No data was changed.", "info");
+}
+
 function renderKaseyaTable(items) {
   const body = $("kaseya-table").querySelector("tbody");
   body.innerHTML = "";
@@ -108,6 +470,8 @@ function renderKaseyaTable(items) {
       else state.selectedIdentifiers.delete(id);
       const row = event.target.closest("tr");
       if (row) row.classList.toggle("selected", !!event.target.checked);
+      setSelectionValidation("");
+      refreshDryRunSelectionState();
     });
   });
 }
@@ -179,11 +543,16 @@ function renderTransferSummary(result) {
   const firstWarning = (result.results || []).find((entry) => entry.status === "partial" || entry.status === "failed");
   const debug = firstWarning ? firstWarning.debug || {} : {};
   const hasDebug = Object.keys(debug).length > 0;
+  const mode = result.mode || "unknown";
+  const skipped = summary.skipped || 0;
   $("transfer-summary").innerHTML = `
     <div><strong>Added:</strong> ${summary.created || 0} | <strong>Updated:</strong> ${
     summary.updated || 0
   } | <strong>Needs review:</strong> ${summary.partial || 0} | <strong>Failed:</strong> ${
     summary.failed || 0
+  } | <strong>Skipped:</strong> ${skipped}</div>
+    <div class="muted">Mode: <strong>${mode === "live" ? "Live API" : mode === "mock" ? "Mock API" : mode}</strong>${
+    skipped ? " | Some selected assets were skipped due sync safeguards." : ""
   }</div>
     <div class="muted">Records marked as "Needs review" synced with missing or incomplete optional fields.</div>
     ${
@@ -233,6 +602,19 @@ function renderHistory(identifier, items) {
 
 async function loadKaseyaAssets() {
   const { page, pageSize, search } = state.kaseya;
+  const useCoverageFilter = ["synced", "stale", "failed"].includes(state.kaseya.coverageFilter);
+
+  if (useCoverageFilter) {
+    const comparisonItems = await fetchCoverageComparison(false);
+    const filteredAssets = filterCoverageAssets(comparisonItems);
+    const paged = paginateItems(filteredAssets, page, pageSize);
+    state.kaseya.page = paged.page;
+    state.kaseya.totalPages = paged.totalPages;
+    $("kaseya-page-label").textContent = `Page ${paged.page} of ${paged.totalPages}`;
+    renderKaseyaTable(paged.items);
+    return;
+  }
+
   const query = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize),
@@ -243,6 +625,44 @@ async function loadKaseyaAssets() {
   state.kaseya.totalPages = data.total_pages || 1;
   $("kaseya-page-label").textContent = `Page ${data.page} of ${state.kaseya.totalPages}`;
   renderKaseyaTable(data.items || []);
+}
+
+async function loadCoverageStats() {
+  setCoverageLoading();
+  const comparisonItems = await fetchCoverageComparison(true);
+  const staleCutoffMs = Date.now() - state.coverage.staleDays * 24 * 60 * 60 * 1000;
+
+  let matched = 0;
+  let missing = 0;
+  let stale = 0;
+  let failureSignals = 0;
+
+  comparisonItems.forEach((entry) => {
+    const status = String(entry.match_status || "").toLowerCase();
+    if (status === "matched") {
+      matched += 1;
+    } else if (status === "missing_in_revnue") {
+      missing += 1;
+    }
+
+    if (isStaleAsset(entry.kaseya_asset, staleCutoffMs)) {
+      stale += 1;
+    }
+    if (hasFailureSignal(entry)) {
+      failureSignals += 1;
+    }
+  });
+
+  setCoverageCard("total", comparisonItems.length, "Comparison snapshot");
+  setCoverageCard("synced", matched, "Identifiers found in destination");
+  setCoverageCard("missing", missing, "Click to show only missing assets");
+  setCoverageCard("stale", stale, "Click to filter by last-updated age");
+  setCoverageCard(
+    "failed",
+    failureSignals > 0 ? "Yes" : "No",
+    failureSignals > 0 ? `${failureSignals} failure signal(s) detected` : "No failure signal in comparison payload"
+  );
+  updateCoverageCardSelection();
 }
 
 async function loadRevnueAssets() {
@@ -273,20 +693,6 @@ async function loadAutosyncState() {
   setAutosyncButton(!!data.enabled);
 }
 
-function openTransferModal() {
-  const count = state.selectedIdentifiers.size;
-  if (!count) {
-    notify("Select at least one source asset to sync.", "warning");
-    return;
-  }
-  $("transfer-modal-text").textContent = `Sync ${count} selected asset(s) to the destination system?`;
-  $("transfer-modal").classList.add("open");
-}
-
-function closeTransferModal() {
-  $("transfer-modal").classList.remove("open");
-}
-
 function openActivityModal() {
   $("activity-modal").classList.add("open");
 }
@@ -295,10 +701,14 @@ function closeActivityModal() {
   $("activity-modal").classList.remove("open");
 }
 
-async function executeTransfer() {
-  const identifiers = Array.from(state.selectedIdentifiers);
-  if (!identifiers.length) return;
-  const transferButton = $("confirm-transfer-btn");
+async function executeTransfer(options = {}) {
+  const identifiers = options.identifiers || currentSelectionIdentifiers();
+  if (!identifiers.length) {
+    setSelectionValidation("Select at least one source asset to sync.");
+    return;
+  }
+  const transferButton = options.button || null;
+  const onSuccess = typeof options.onSuccess === "function" ? options.onSuccess : null;
   try {
     setLoading(true);
     setButtonBusy(transferButton, true);
@@ -309,7 +719,12 @@ async function executeTransfer() {
     renderTransferSummary(result);
     state.selectedIdentifiers.clear();
     $("kaseya-select-all").checked = false;
-    closeTransferModal();
+    setSelectionValidation("");
+    resetDryRunState();
+    updateDryRunConfirmVisibility();
+    if (onSuccess) {
+      onSuccess();
+    }
     await Promise.all([loadKaseyaAssets(), loadRevnueAssets(), loadLogs()]);
     notify("Sync completed successfully.", "info");
   } catch (error) {
@@ -338,6 +753,11 @@ function bindEvents() {
   });
 
   $("refresh-data-btn").addEventListener("click", () => withLoading(refreshAll));
+  document.querySelectorAll("[data-coverage-filter]").forEach((card) => {
+    card.addEventListener("click", () => {
+      applyCoverageFilter(card.getAttribute("data-coverage-filter") || "all");
+    });
+  });
   $("export-csv-btn").addEventListener("click", () => {
     const url = "/api/assets/export.csv";
     const anchor = document.createElement("a");
@@ -365,24 +785,22 @@ function bindEvents() {
       notify("Manual sync completed.", failed > 0 ? "warning" : "info");
     })
   );
-  $("preview-selected-btn").addEventListener("click", () =>
-    withLoading(async () => {
-      const identifiers = Array.from(state.selectedIdentifiers);
-      if (!identifiers.length) {
-        notify("Select at least one source asset to preview.", "warning");
-        return;
-      }
-      const result = await apiFetch("/api/sync/dry-run", {
-        method: "POST",
-        body: JSON.stringify({ identifiers }),
-      });
-      renderTransferSummary(result);
-      notify("Preview generated. No data was changed.", "info");
+  $("preview-selected-btn").addEventListener("click", () => withLoading(runDryRunPreview));
+  $("transfer-selected-btn").addEventListener("click", () => withLoading(runDryRunPreview));
+  $("close-dry-run-btn").addEventListener("click", closeDryRunModal);
+  $("cancel-dry-run-btn").addEventListener("click", closeDryRunModal);
+  $("confirm-dry-run-btn").addEventListener("click", () =>
+    executeTransfer({
+      identifiers: state.dryRun.identifiers.slice(),
+      button: $("confirm-dry-run-btn"),
+      onSuccess: closeDryRunModal,
     })
   );
-  $("transfer-selected-btn").addEventListener("click", openTransferModal);
-  $("confirm-transfer-btn").addEventListener("click", executeTransfer);
-  $("cancel-transfer-btn").addEventListener("click", closeTransferModal);
+  $("dry-run-modal").addEventListener("click", (event) => {
+    if (event.target.id === "dry-run-modal") {
+      closeDryRunModal();
+    }
+  });
 
   $("autosync-navbar-toggle").addEventListener("click", async () => {
     try {
@@ -404,7 +822,10 @@ function bindEvents() {
 
   $("only-missing-toggle").addEventListener("change", (event) => {
     state.onlyMissing = !!event.target.checked;
+    state.kaseya.coverageFilter = state.onlyMissing ? "missing" : "all";
+    state.kaseya.lastUpdatedBefore = "";
     state.kaseya.page = 1;
+    updateCoverageCardSelection();
     withLoading(loadKaseyaAssets);
   });
 
@@ -467,6 +888,8 @@ function bindEvents() {
       const row = box.closest("tr");
       if (row) row.classList.toggle("selected", check);
     });
+    setSelectionValidation("");
+    refreshDryRunSelectionState();
   });
 
   $("history-load-btn").addEventListener("click", () => {
@@ -478,10 +901,24 @@ function bindEvents() {
     const identifier = $("history-identifier").value.trim();
     renderHistory(identifier, state.logs.messages);
   });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    closeDryRunModal();
+  });
 }
 
 async function refreshAll() {
+  let coverageError = null;
+  try {
+    await loadCoverageStats();
+  } catch (error) {
+    coverageError = error;
+  }
   await Promise.all([loadKaseyaAssets(), loadRevnueAssets(), loadLogs(), loadAutosyncState()]);
+  if (coverageError) {
+    throw coverageError;
+  }
 }
 
 async function withLoading(fn) {
@@ -497,6 +934,9 @@ async function withLoading(fn) {
 
 async function init() {
   bindEvents();
+  resetDryRunState();
+  updateDryRunConfirmVisibility();
+  updateCoverageCardSelection();
   setSyncRunStatus("No manual sync has been started in this session.");
   await withLoading(refreshAll);
   window.setInterval(() => loadLogs().catch(() => {}), 15000);

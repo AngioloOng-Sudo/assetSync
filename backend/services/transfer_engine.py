@@ -23,7 +23,7 @@ from backend.services.revnue_client import (
     fetch_revnue_exact_matches,
     upsert_revnue_asset,
 )
-from backend.services.settings_manager import get_setting
+from backend.services.settings_manager import get_bool_setting, get_setting
 
 MAPPED_FIELDS = ("company", "name", "manufacturer", "model", "serial_number", "asset_tag")
 
@@ -192,6 +192,7 @@ def transfer_kaseya_assets_to_revnue(
     assets_or_identifiers: list[dict[str, Any]] | list[str] | None = None,
     *,
     dry_run: bool = False,
+    respect_tombstones: bool = True,
 ) -> dict[str, Any]:
     """Transfer selected Kaseya assets to Revnue using SOP create/update logic."""
     selected_assets = _resolve_selected_assets(assets_or_identifiers)
@@ -201,7 +202,7 @@ def transfer_kaseya_assets_to_revnue(
 
     for asset in selected_assets:
         identifier = (asset.get("Identifier") or "").strip()
-        if identifier and is_tombstoned(identifier):
+        if identifier and respect_tombstones and is_tombstoned(identifier):
             summary["skipped"] += 1
             result = {
                 "identifier": identifier,
@@ -357,7 +358,13 @@ def transfer_kaseya_assets_to_revnue(
                 payload=result,
             )
 
-    return {"summary": summary, "results": results, "total": len(selected_assets), "dry_run": dry_run}
+    return {
+        "summary": summary,
+        "results": results,
+        "total": len(selected_assets),
+        "dry_run": dry_run,
+        "mode": "mock" if get_bool_setting("USE_MOCK_APIS", True) else "live",
+    }
 
 
 def delete_revnue_asset(identifier: str, company: str | int | None = None) -> dict[str, Any]:

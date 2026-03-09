@@ -843,6 +843,7 @@ button.is-busy::after {
 .mt-0 { margin-top: 0 !important; }
 .modal-content-lg { width: min(800px, 100%); }
 .modal-grid { margin-top: var(--s4); }
+.activity-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .table-col-checkbox { width: 42px; }
 .table-col-action { width: 96px; }
 .auth-card { max-width: 480px; }
@@ -938,6 +939,41 @@ button.is-busy::after {
   margin-top: var(--s1);
 }
 
+.kpi.stat-card--clickable {
+  display: block;
+  width: 100%;
+  text-align: left;
+  min-height: 0;
+  padding: var(--s4);
+  cursor: pointer;
+  background: var(--surface-2);
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: none;
+}
+
+.kpi.stat-card--clickable:hover {
+  border-color: var(--blue-200);
+  background: var(--blue-50);
+}
+
+.kpi.stat-card--clickable:not(:disabled):hover {
+  border-color: var(--blue-200);
+  box-shadow: var(--shadow-sm);
+  transform: none;
+}
+
+.kpi.stat-card--clickable:focus-visible {
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.kpi.stat-card--active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: var(--shadow-sm);
+}
+
 /* ── 16. STATUS BAR ────────────────────────────────────── */
 .status-bar {
   display: flex;
@@ -1003,6 +1039,41 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr { transition: background var(--ease); }
 tbody tr:hover   { background: var(--gray-50); }
 tbody tr.selected{ background: var(--blue-50); }
+
+/* Dry run diff rows */
+#dry-run-table tbody tr.diff-create td {
+  background: var(--green-50);
+}
+
+#dry-run-table tbody tr.diff-update td {
+  background: var(--blue-50);
+}
+
+#dry-run-table tbody tr.diff-skip td {
+  background: var(--gray-50);
+}
+
+#dry-run-table tbody tr.diff-error td {
+  background: var(--red-50);
+}
+
+.diff-field-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  line-height: 1.4;
+}
+
+.diff-before {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.diff-after {
+  color: var(--success);
+  font-weight: 600;
+}
 
 /* ── 18. PAGINATION ────────────────────────────────────── */
 .pagination {
@@ -1255,6 +1326,119 @@ pre.event-list {
   padding: var(--s3) var(--s4);
 }
 
+/* Connectivity status cards */
+.connectivity-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+}
+
+.connectivity-status-empty {
+  grid-column: 1 / -1;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  padding: var(--s4);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.connectivity-status-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  padding: var(--s4);
+}
+
+.connectivity-status-card.success {
+  border-color: #bbf7d0;
+  background: var(--green-50);
+}
+
+.connectivity-status-card.warning {
+  border-color: #fde68a;
+  background: var(--yellow-50);
+}
+
+.connectivity-status-card.error {
+  border-color: #fecaca;
+  background: var(--red-50);
+}
+
+.connectivity-status-card.info {
+  border-color: var(--blue-200);
+  background: var(--blue-50);
+}
+
+.connectivity-status-card.neutral {
+  border-color: var(--border);
+}
+
+.connectivity-status-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+
+.connectivity-service {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.connectivity-meta {
+  margin: 0;
+  display: grid;
+  gap: var(--s2);
+}
+
+.connectivity-meta > div {
+  display: grid;
+  gap: 2px;
+}
+
+.connectivity-meta dt {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.connectivity-meta dd {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.connectivity-debug {
+  margin-top: var(--s2);
+  border-top: 1px solid var(--border);
+  padding-top: var(--s3);
+}
+
+.connectivity-debug summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.connectivity-debug[open] summary {
+  margin-bottom: var(--s2);
+}
+
+.connectivity-debug pre.event-list {
+  max-height: 220px;
+}
+
 /* ── 30. ANIMATIONS ────────────────────────────────────── */
 .flow { animation: fadeUp 260ms ease both; }
 
@@ -1306,6 +1490,8 @@ pre.event-list {
   .page-header-inner { flex-direction: column; align-items: flex-start; }
   .page-header-actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
 
+  .connectivity-status-grid { grid-template-columns: 1fr; }
+
   .kpi-grid { grid-template-columns: 1fr 1fr; }
 
   .toolbar { flex-direction: column; align-items: stretch; }
@@ -1323,6 +1509,7 @@ pre.event-list {
 }
 
 @media (max-width: 480px) {
+  .activity-panels { grid-template-columns: 1fr; }
   .kpi-grid { grid-template-columns: 1fr 1fr; }
   button { padding: 0 11px; }
   .topbar-btn .topbar-label { display: none; }

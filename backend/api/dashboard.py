@@ -164,7 +164,12 @@ async def export_asset_comparison_csv() -> str:
 
 @router.post("/transfer")
 def transfer_assets(request: TransferRequest) -> dict:
-    return transfer_kaseya_assets_to_revnue(request.identifiers, dry_run=request.dry_run)
+    # Manual sync requests should be able to restore assets that were tombstoned by prior deletes.
+    return transfer_kaseya_assets_to_revnue(
+        request.identifiers,
+        dry_run=request.dry_run,
+        respect_tombstones=False,
+    )
 
 
 @router.delete("/assets/revnue/{identifier}")

@@ -22,9 +22,14 @@ Implementation of the SOP-defined system that synchronizes assets between Kaseya
 - `REVNUE_TEST_URL`
 - `REVNUE_ASSET_URL`
 - `REVNUE_COMPANY`
+- `REVNUE_API_TOKEN` (alias-compatible with `REVNUE_TOKEN`)
 - `KASEYA_TOKEN_ID`
 - `KASEYA_TOKEN_SECRET`
+- `KASEYA_API_TOKEN` (optional bearer auth)
 - `WEBHOOK_SHARED_SECRET`
+- `DEFAULT_USER_AGENT`
+- `KASEYA_BASE_URL`
+- `KASEYA_ASSETS_URL` (optional override)
 - `USE_MOCK_APIS`
 - `USE_MOCK_FIXTURE_REPLAY`
 - `MOCK_KASEYA_FIXTURE_PATH`

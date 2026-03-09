@@ -58,22 +58,57 @@ def _mock_kaseya_assets() -> list[dict[str, Any]]:
 
 
 def _auth_headers() -> dict[str, str]:
+    headers: dict[str, str] = {
+        "Accept": "application/json",
+        "User-Agent": get_setting("DEFAULT_USER_AGENT", "gsis-Kaseya-client/1.0"),
+    }
     bearer = get_setting("KASEYA_API_TOKEN")
     if bearer:
-        return {"Authorization": f"Bearer {bearer}"}
+        headers["Authorization"] = f"Bearer {bearer}"
+        return headers
 
     token_id = get_setting("KASEYA_TOKEN_ID")
     token_secret = get_setting("KASEYA_TOKEN_SECRET")
     if token_id and token_secret:
         encoded = base64.b64encode(f"{token_id}:{token_secret}".encode("utf-8")).decode("ascii")
-        return {"Authorization": f"Basic {encoded}"}
+        headers["Authorization"] = f"Basic {encoded}"
+        return headers
 
-    return {}
+    return headers
 
 
 def _base_assets_url() -> str:
+    explicit_assets_url = get_setting("KASEYA_ASSETS_URL", "").strip()
+    if explicit_assets_url:
+        return explicit_assets_url.rstrip("/")
     base_url = get_setting("KASEYA_BASE_URL").rstrip("/")
     return f"{base_url}/assets"
+
+
+def _extract_http_error_message(exc: requests.RequestException) -> str:
+    response = getattr(exc, "response", None)
+    if response is None:
+        return str(exc)
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+
+    if isinstance(payload, dict):
+        meta = payload.get("Meta")
+        if isinstance(meta, dict):
+            detail = str(meta.get("ErrorMessage") or "").strip()
+            if detail:
+                return detail
+        for key in ("detail", "message", "error"):
+            detail = str(payload.get(key) or "").strip()
+            if detail:
+                return detail
+
+    text = str(getattr(response, "text", "") or "").strip()
+    if text:
+        return text[:240]
+    return str(exc)
 
 
 def _normalize_assets(items: Any, source: str) -> list[dict[str, Any]]:
@@ -143,7 +178,8 @@ def fetch_kaseya_assets(top: int = 100, skip: int = 0) -> list[dict[str, Any]]:
             if recognized:
                 return _normalize_assets(items, "kaseya_api")
         except requests.RequestException as exc:
-            last_error = exc
+            detail = _extract_http_error_message(exc)
+            last_error = RuntimeError(f"Kaseya upstream error: {detail}")
             continue
 
     if last_error:
@@ -259,3 +295,60 @@ def fetch_kaseya_asset_by_identifier(identifier: str) -> dict[str, Any] | None:
         result["detail_source"] = "paged_list"
         return result
     return None
+
+
+def check_kaseya_connectivity() -> dict[str, Any]:
+    """Basic Kaseya connectivity check for support tooling."""
+    endpoint = _base_assets_url()
+    if get_bool_setting("USE_MOCK_APIS", True):
+        return {"reachable": True, "mode": "mock", "url": endpoint or "mock", "status_code": 200}
+
+    headers = _auth_headers()
+    if not headers.get("Authorization"):
+        return {
+            "reachable": False,
+            "mode": "live",
+            "url": endpoint,
+            "error": "missing_credentials",
+        }
+
+    attempts: tuple[dict[str, int], ...] = (
+        {"$top": 1, "$skip": 0},
+        {"top": 1, "skip": 0},
+        {},
+    )
+
+    last_status_code: int | None = None
+    last_error = ""
+    for params in attempts:
+        request_kwargs: dict[str, Any] = {"headers": headers, "timeout": 10}
+        if params:
+            request_kwargs["params"] = params
+        try:
+            response = resilient_request("kaseya", "GET", endpoint, **request_kwargs)
+            return {
+                "reachable": True,
+                "mode": "live",
+                "url": endpoint,
+                "status_code": response.status_code,
+            }
+        except requests.RequestException as exc:
+            detail = _extract_http_error_message(exc)
+            response = getattr(exc, "response", None)
+            if response is not None and isinstance(getattr(response, "status_code", None), int):
+                last_status_code = int(response.status_code)
+            last_error = detail or str(exc)
+            continue
+        except Exception as exc:
+            last_error = str(exc)
+            continue
+
+    result = {
+        "reachable": False,
+        "mode": "live",
+        "url": endpoint,
+        "error": last_error or "request_failed",
+    }
+    if last_status_code is not None:
+        result["status_code"] = last_status_code
+    return result

@@ -6,7 +6,7 @@
     <title>Help &amp; Support — Asset Sync Console</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="/static/styles.css?v=20260309c" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260309g" />
   </head>
   <body>
     <div class="app-shell">
@@ -109,7 +109,13 @@
                     </button>
                   </div>
                 </div>
-                <pre id="connectivity-output" class="event-list"></pre>
+                <div id="connectivity-status" class="connectivity-status-grid">
+                  <div class="connectivity-status-empty">Run a connectivity test to view API status.</div>
+                </div>
+                <details class="connectivity-debug">
+                  <summary>Raw response payload</summary>
+                  <pre id="connectivity-output" class="event-list"></pre>
+                </details>
               </div>
             </section>
 
@@ -204,7 +210,7 @@
 
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
-    <script src="/static/sidebar.js?v=20260309c"></script>
-    <script src="/static/support.js?v=20260309c"></script>
+    <script src="/static/sidebar.js?v=20260309f"></script>
+    <script src="/static/support.js?v=20260309g"></script>
   </body>
 </html>

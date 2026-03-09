@@ -6,7 +6,7 @@
     <title>Dashboard — Asset Sync Console</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="/static/styles.css?v=20260309c" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260309i" />
   </head>
   <body>
     <div class="app-shell">
@@ -115,6 +115,35 @@
               </div>
             </section>
 
+            <!-- Sync Coverage KPI -->
+            <section class="kpi-grid">
+              <button id="coverage-total-card" type="button" class="kpi stat-card--clickable" data-coverage-filter="all">
+                <div class="kpi-label">Total Assets</div>
+                <div id="coverage-total-value" class="kpi-value">—</div>
+                <div id="coverage-total-sub" class="kpi-sub">Comparison snapshot</div>
+              </button>
+              <button id="coverage-synced-card" type="button" class="kpi stat-card--clickable" data-coverage-filter="synced">
+                <div class="kpi-label">Synced</div>
+                <div id="coverage-synced-value" class="kpi-value">—</div>
+                <div id="coverage-synced-sub" class="kpi-sub">Matched identifiers</div>
+              </button>
+              <button id="coverage-missing-card" type="button" class="kpi stat-card--clickable" data-coverage-filter="missing">
+                <div class="kpi-label">Not Synced</div>
+                <div id="coverage-missing-value" class="kpi-value">—</div>
+                <div id="coverage-missing-sub" class="kpi-sub">Click to set only_missing=true</div>
+              </button>
+              <button id="coverage-stale-card" type="button" class="kpi stat-card--clickable" data-coverage-filter="stale">
+                <div class="kpi-label">Stale (&gt;7 days)</div>
+                <div id="coverage-stale-value" class="kpi-value">—</div>
+                <div id="coverage-stale-sub" class="kpi-sub">Click to apply last-updated filter</div>
+              </button>
+              <button id="coverage-failed-card" type="button" class="kpi stat-card--clickable" data-coverage-filter="failed">
+                <div class="kpi-label">Last Run Failed</div>
+                <div id="coverage-failed-value" class="kpi-value">—</div>
+                <div id="coverage-failed-sub" class="kpi-sub">Failure signal from comparison data</div>
+              </button>
+            </section>
+
             <!-- Asset Panels -->
             <section class="grid two">
               <!-- Source: Kaseya -->
@@ -132,6 +161,7 @@
                     </button>
                   </div>
                 </div>
+                <p id="selection-validation-message" class="subtle mt-0" aria-live="polite"></p>
 
                 <div class="row">
                   <input
@@ -276,20 +306,40 @@
       </div>
     </div>
 
-    <!-- ── Confirm Sync Modal ── -->
-    <div id="transfer-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="transfer-modal-title">
-      <div class="modal-content">
+    <!-- ── Dry Run Preview Modal ── -->
+    <div id="dry-run-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dry-run-modal-title">
+      <div class="modal-content modal-content-lg">
         <div class="modal-header">
-          <h2 class="modal-title" id="transfer-modal-title">Confirm Sync</h2>
+          <h2 class="modal-title" id="dry-run-modal-title">Dry Run Preview</h2>
+          <button id="close-dry-run-btn" class="ghost btn-sm">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Close
+          </button>
         </div>
         <div class="modal-body">
-          <p id="transfer-modal-text">Sync the selected assets to the destination system?</p>
+          <p id="dry-run-summary" class="muted">Previewing changes for selected assets.</p>
+          <div id="dry-run-empty" class="empty-state" hidden>
+            <p>Nothing to sync for the selected assets.</p>
+          </div>
+          <div id="dry-run-table-wrap" class="table-wrap">
+            <table id="dry-run-table">
+              <thead>
+                <tr>
+                  <th>Identifier</th>
+                  <th>Action</th>
+                  <th>Fields Changed</th>
+                  <th>Before &rarr; After</th>
+                </tr>
+              </thead>
+              <tbody id="dry-run-table-body"></tbody>
+            </table>
+          </div>
         </div>
         <div class="modal-footer">
-          <button id="cancel-transfer-btn">Cancel</button>
-          <button id="confirm-transfer-btn" class="primary">
+          <button id="cancel-dry-run-btn">Cancel</button>
+          <button id="confirm-dry-run-btn" class="primary" hidden>
             <svg viewBox="0 0 24 24"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-            Start Sync
+            Confirm Sync
           </button>
         </div>
       </div>
@@ -308,7 +358,7 @@
             </button>
           </div>
         </div>
-        <div class="grid two modal-grid">
+        <div class="grid activity-panels modal-grid">
           <div>
             <div class="section-title">Alerts</div>
             <div id="activity-notifications" class="activity-list"></div>
@@ -323,7 +373,7 @@
 
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
-    <script src="/static/sidebar.js?v=20260309c"></script>
-    <script src="/static/app.js?v=20260309c"></script>
+    <script src="/static/sidebar.js?v=20260309f"></script>
+    <script src="/static/app.js?v=20260309i"></script>
   </body>
 </html>

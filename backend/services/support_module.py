@@ -6,12 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-import requests
-
 from backend.models.db import DB_PATH, SUPPORT_TICKETS_PATH, cleanup_events, list_tombstones, utcnow_iso
 from backend.services.activity_logger import get_activity, get_state, log_activity
 from backend.services.notifications import send_outbound_webhook
 from backend.services.autosync_engine import get_sync_status, process_pending_events, retry_failed_events
+from backend.services.kaseya_client import check_kaseya_connectivity
 from backend.services.resilience import get_resilience_snapshot
 from backend.services.revnue_client import check_revnue_connectivity
 from backend.services.settings_manager import get_bool_setting, get_setting
@@ -22,7 +21,7 @@ from backend.utils.security import is_secret_key, mask_secret
 def run_connectivity_checks(targets: list[str] | None = None) -> dict[str, Any]:
     """Run outbound connectivity checks for configured integrations."""
     configured_targets = {
-        "kaseya": get_setting("KASEYA_BASE_URL", "").strip(),
+        "kaseya": get_setting("KASEYA_ASSETS_URL", "").strip() or get_setting("KASEYA_BASE_URL", "").strip(),
         "revnue": get_setting("REVNUE_TEST_URL", "").strip() or get_setting("REVNUE_ASSET_URL", "").strip(),
     }
     if targets:
@@ -30,6 +29,11 @@ def run_connectivity_checks(targets: list[str] | None = None) -> dict[str, Any]:
 
     results: dict[str, Any] = {}
     for name, url in configured_targets.items():
+        if name == "kaseya":
+            kaseya_result = check_kaseya_connectivity()
+            kaseya_result["target"] = url or kaseya_result.get("url")
+            results[name] = kaseya_result
+            continue
         if name == "revnue":
             revnue_result = check_revnue_connectivity()
             revnue_result["target"] = url or revnue_result.get("url")
@@ -38,19 +42,7 @@ def run_connectivity_checks(targets: list[str] | None = None) -> dict[str, Any]:
         if get_bool_setting("USE_MOCK_APIS", True):
             results[name] = {"target": url or "mock", "reachable": True, "status_code": 200, "mode": "mock"}
             continue
-        if not url:
-            results[name] = {"target": "", "reachable": False, "error": "missing_url"}
-            continue
-        try:
-            response = requests.get(url, timeout=8)
-            results[name] = {
-                "target": url,
-                "reachable": response.ok,
-                "status_code": response.status_code,
-                "mode": "live",
-            }
-        except Exception as exc:  # pragma: no cover - network failure path
-            results[name] = {"target": url, "reachable": False, "error": str(exc), "mode": "live"}
+        results[name] = {"target": url, "reachable": False, "error": "unsupported_target", "mode": "live"}
     return results
 
 
@@ -62,10 +54,14 @@ def safe_config_snapshot() -> dict[str, str]:
         "AUTOSYNC_INTERVAL_SECONDS",
         "AUTOSYNC_CRON_WINDOWS",
         "EVENT_DEDUP_WINDOW_SECONDS",
+        "DEFAULT_USER_AGENT",
         "REVNUE_COMPANY",
         "REVNUE_TEST_URL",
         "REVNUE_ASSET_URL",
+        "REVNUE_API_TOKEN",
         "KASEYA_BASE_URL",
+        "KASEYA_ASSETS_URL",
+        "KASEYA_API_TOKEN",
         "USE_MOCK_FIXTURE_REPLAY",
         "MOCK_KASEYA_FIXTURE_PATH",
         "MOCK_REVNUE_FIXTURE_PATH",
