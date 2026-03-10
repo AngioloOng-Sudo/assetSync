@@ -6,7 +6,7 @@
     <title>Configuration — Asset Sync Console</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="/static/styles.css?v=20260309f" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260310d" />
   </head>
   <body>
     <div class="app-shell">
@@ -58,6 +58,7 @@
             <button id="sidebar-toggle-btn" class="menu-toggle" type="button" aria-label="Toggle sidebar">
               <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
+            <span id="health-dot" class="health-dot health-dot--unknown" title="Connection status unknown"></span>
             <h1>Asset Sync Console</h1>
           </div>
           <div class="topbar-right">
@@ -147,6 +148,31 @@
                 </div>
               </section>
 
+              <!-- Sync Schedule Windows -->
+              <section class="card flow">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Sync Schedule Windows</div>
+                    <div class="card-subtitle">Define when autosync is allowed to run</div>
+                  </div>
+                  <div class="card-actions">
+                    <button id="add-schedule-window-btn" class="soft btn-sm">
+                      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      Add Window
+                    </button>
+                  </div>
+                </div>
+                <div id="schedule-window-status" class="pill neutral">Loading schedule status...</div>
+                <div id="schedule-window-list" class="schedule-window-list"></div>
+                <pre id="schedule-preview" class="transfer-summary mono"></pre>
+                <div class="row end">
+                  <button id="save-schedule-btn" class="primary btn-sm">
+                    <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    Save Schedule
+                  </button>
+                </div>
+              </section>
+
               <!-- Advanced .env Editor -->
               <section class="card flow">
                 <div class="card-head">
@@ -190,6 +216,6 @@
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
     <script src="/static/sidebar.js?v=20260309f"></script>
-    <script src="/static/settings.js?v=20260309f"></script>
+    <script src="/static/settings.js?v=20260310d"></script>
   </body>
 </html>

@@ -1,4 +1,6 @@
 const $ = (id) => document.getElementById(id);
+let syncTrendChart = null;
+let failedPartialRetryIdentifiers = [];
 
 async function apiFetch(url, options = {}) {
   const response = await fetch(url, options);
@@ -22,6 +24,11 @@ function notify(message, type = "info") {
   window.setTimeout(() => toast.remove(), 2600);
 }
 
+function setButtonBusy(button, busy) {
+  if (!button) return;
+  button.classList.toggle("is-busy", busy);
+}
+
 function formatDate(isoDate) {
   if (!isoDate) return "-";
   const parsed = new Date(isoDate);
@@ -34,6 +41,179 @@ function formatLabel(value) {
   return String(value)
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function toFiniteNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function dayKeyFromIso(value) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
+}
+
+function dayLabelFromKey(dayKey) {
+  if (!dayKey) return "-";
+  const parsed = new Date(`${dayKey}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return dayKey;
+  return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function destroyTrendChart() {
+  if (syncTrendChart) {
+    syncTrendChart.destroy();
+    syncTrendChart = null;
+  }
+}
+
+function renderTrendChart(auditItems) {
+  const empty = $("sync-trend-empty");
+  const canvas = $("sync-trend-chart");
+  if (!empty || !canvas) return;
+
+  destroyTrendChart();
+
+  const groupedByDay = new Map();
+  (auditItems || []).forEach((item) => {
+    const dayKey = dayKeyFromIso(item?.completed_at);
+    if (!dayKey) return;
+    const current = groupedByDay.get(dayKey) || { processed: 0, failed: 0 };
+    current.processed += toFiniteNumber(item?.processed);
+    current.failed += toFiniteNumber(item?.failed);
+    groupedByDay.set(dayKey, current);
+  });
+
+  const days = Array.from(groupedByDay.keys()).sort().slice(-7);
+  if (days.length < 2 || typeof Chart === "undefined") {
+    canvas.hidden = true;
+    empty.hidden = false;
+    empty.textContent =
+      typeof Chart === "undefined"
+        ? "Trend chart is unavailable because Chart.js did not load."
+        : "Not enough data yet.";
+    return;
+  }
+
+  const labels = days.map((dayKey) => dayLabelFromKey(dayKey));
+  const successRate = days.map((dayKey) => {
+    const totals = groupedByDay.get(dayKey) || { processed: 0, failed: 0 };
+    const denominator = totals.processed + totals.failed;
+    if (denominator <= 0) return 0;
+    return Number(((totals.processed / denominator) * 100).toFixed(2));
+  });
+  const failedCount = days.map((dayKey) => {
+    const totals = groupedByDay.get(dayKey) || { failed: 0 };
+    return totals.failed;
+  });
+
+  canvas.hidden = false;
+  empty.hidden = true;
+
+  const context = canvas.getContext("2d");
+  syncTrendChart = new Chart(context, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Success Rate (%)",
+          data: successRate,
+          borderColor: "#22c55e",
+          backgroundColor: "rgba(34, 197, 94, 0.16)",
+          yAxisID: "ySuccess",
+          tension: 0.28,
+          pointRadius: 3,
+          borderWidth: 2,
+        },
+        {
+          label: "Failed Count",
+          data: failedCount,
+          borderColor: "#ef4444",
+          backgroundColor: "rgba(239, 68, 68, 0.16)",
+          yAxisID: "yFailed",
+          tension: 0.28,
+          pointRadius: 3,
+          borderWidth: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        ySuccess: {
+          type: "linear",
+          position: "left",
+          min: 0,
+          max: 100,
+          ticks: {
+            callback: (value) => `${value}%`,
+          },
+          title: { display: true, text: "Success Rate (%)" },
+        },
+        yFailed: {
+          type: "linear",
+          position: "right",
+          beginAtZero: true,
+          grid: { drawOnChartArea: false },
+          title: { display: true, text: "Failed Count" },
+        },
+      },
+    },
+  });
+}
+
+const HEALTH_DOT_VARIANTS = ["health-dot--healthy", "health-dot--degraded", "health-dot--critical", "health-dot--unknown"];
+
+function circuitState(snapshot) {
+  if (snapshot && typeof snapshot === "object") {
+    if (snapshot.circuit_open === true) return "open";
+    if (snapshot.circuit_open === false) return "closed";
+    const state = String(snapshot.state || snapshot.status || "").toLowerCase();
+    if (state.includes("open")) return "open";
+    if (state.includes("close")) return "closed";
+    if (state) return state;
+  }
+  return "unknown";
+}
+
+function resilienceEntries(payload) {
+  const raw = payload?.resilience || payload?.checks?.circuit_breakers || payload?.checks?.resilience || {};
+  if (!raw || typeof raw !== "object") return [];
+  return Object.entries(raw).map(([service, snapshot]) => ({
+    service,
+    state: circuitState(snapshot),
+  }));
+}
+
+function setHealthDotVariant(variant, titleText) {
+  const dot = $("health-dot");
+  if (!dot) return;
+  dot.classList.remove(...HEALTH_DOT_VARIANTS);
+  dot.classList.add(`health-dot--${variant}`);
+  dot.setAttribute("title", titleText);
+}
+
+async function updateHealthDot() {
+  try {
+    const payload = await apiFetch("/api/health");
+    const circuits = resilienceEntries(payload);
+    if (!circuits.length) {
+      setHealthDotVariant("unknown", "No circuit breaker data available.");
+      return;
+    }
+    const openCount = circuits.filter((entry) => entry.state === "open").length;
+    const variant =
+      openCount === 0 ? "healthy" : openCount === circuits.length ? "critical" : "degraded";
+    const titleText = circuits.map((entry) => `${entry.service}: ${entry.state}`).join(" | ");
+    setHealthDotVariant(variant, titleText);
+  } catch (error) {
+    setHealthDotVariant("critical", `Health check failed: ${error.message}`);
+  }
 }
 
 function healthPillClass(state) {
@@ -104,6 +284,67 @@ function renderEvents(containerId, events) {
       </div>
     `
     )
+    .join("");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function retryIdentifiers(events) {
+  const identifiers = new Set();
+  (events || []).forEach((event) => {
+    const identifier = String(event?.identifier || "").trim();
+    if (identifier) {
+      identifiers.add(identifier);
+    }
+  });
+  return Array.from(identifiers);
+}
+
+function updateRetryAllFailedButton(events) {
+  const button = $("retry-all-failed-btn");
+  if (!button) return;
+  failedPartialRetryIdentifiers = retryIdentifiers(events);
+  const count = failedPartialRetryIdentifiers.length;
+  button.textContent = `Retry All Failed (${count})`;
+  button.disabled = count === 0;
+}
+
+function renderAttentionEvents(events) {
+  const container = $("failed-partial-events");
+  if (!container) return;
+  updateRetryAllFailedButton(events);
+  if (!events || !events.length) {
+    container.innerHTML = `<div class="muted">No activity for this time range.</div>`;
+    return;
+  }
+  container.innerHTML = events
+    .map((event) => {
+      const identifier = String(event?.identifier || "").trim();
+      const retryButton = identifier
+        ? `<button class="soft btn-xs retry-item-btn" data-identifier="${escapeHtml(
+            identifier
+          )}" type="button" title="Retry this identifier">↺ Retry</button>`
+        : `<button class="ghost btn-xs retry-item-btn" type="button" disabled title="Identifier unavailable">↺ Retry</button>`;
+      return `
+      <div class="event-item">
+        <div class="row spread">
+          <strong>${formatLabel(event.event_type || "event")} (${formatLabel(event.status || "unknown")})</strong>
+          <span class="row">
+            <span>#${event.id || ""}</span>
+            ${retryButton}
+          </span>
+        </div>
+        <div class="muted">${formatDate(event.created_at)} | ${identifier || "-"}</div>
+      </div>
+    `;
+    })
     .join("");
 }
 
@@ -198,6 +439,7 @@ async function loadData() {
     renderEvents("recent-events", status.recent_events || []);
     renderAuditHistory(audit.items || []);
     renderDiffHistory(audit.items || []);
+    renderTrendChart(audit.items || []);
     $("health-snapshot").textContent = JSON.stringify(
       {
         timestamp: health.timestamp,
@@ -243,3 +485,5 @@ loadData().catch((error) => {
 });
 
 window.setInterval(() => loadData().catch(() => {}), 20000);
+updateHealthDot().catch(() => {});
+window.setInterval(() => updateHealthDot().catch(() => {}), 30000);

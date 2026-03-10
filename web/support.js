@@ -29,6 +29,55 @@ function notify(message, type = "info") {
   window.setTimeout(() => toast.remove(), 2600);
 }
 
+const HEALTH_DOT_VARIANTS = ["health-dot--healthy", "health-dot--degraded", "health-dot--critical", "health-dot--unknown"];
+
+function circuitState(snapshot) {
+  if (snapshot && typeof snapshot === "object") {
+    if (snapshot.circuit_open === true) return "open";
+    if (snapshot.circuit_open === false) return "closed";
+    const state = String(snapshot.state || snapshot.status || "").toLowerCase();
+    if (state.includes("open")) return "open";
+    if (state.includes("close")) return "closed";
+    if (state) return state;
+  }
+  return "unknown";
+}
+
+function resilienceEntries(payload) {
+  const raw = payload?.resilience || payload?.checks?.circuit_breakers || payload?.checks?.resilience || {};
+  if (!raw || typeof raw !== "object") return [];
+  return Object.entries(raw).map(([service, snapshot]) => ({
+    service,
+    state: circuitState(snapshot),
+  }));
+}
+
+function setHealthDotVariant(variant, titleText) {
+  const dot = $("health-dot");
+  if (!dot) return;
+  dot.classList.remove(...HEALTH_DOT_VARIANTS);
+  dot.classList.add(`health-dot--${variant}`);
+  dot.setAttribute("title", titleText);
+}
+
+async function updateHealthDot() {
+  try {
+    const payload = await apiFetch("/api/health");
+    const circuits = resilienceEntries(payload);
+    if (!circuits.length) {
+      setHealthDotVariant("unknown", "No circuit breaker data available.");
+      return;
+    }
+    const openCount = circuits.filter((entry) => entry.state === "open").length;
+    const variant =
+      openCount === 0 ? "healthy" : openCount === circuits.length ? "critical" : "degraded";
+    const titleText = circuits.map((entry) => `${entry.service}: ${entry.state}`).join(" | ");
+    setHealthDotVariant(variant, titleText);
+  } catch (error) {
+    setHealthDotVariant("critical", `Health check failed: ${error.message}`);
+  }
+}
+
 function formatDate(isoDate) {
   if (!isoDate) return "-";
   const parsed = new Date(isoDate);
@@ -246,3 +295,6 @@ $("export-diagnostics-btn").addEventListener("click", () => withLoading(exportDi
 withLoading(async () => {
   await Promise.all([loadDiagnostics(), runConnectivity(), loadTickets()]);
 });
+
+updateHealthDot().catch(() => {});
+window.setInterval(() => updateHealthDot().catch(() => {}), 30000);

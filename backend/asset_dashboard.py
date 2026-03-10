@@ -66,7 +66,7 @@ async def add_security_headers(request, call_next):
     response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+        "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self'; "
         "img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     )
     if request.url.scheme == "https":

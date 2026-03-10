@@ -6,7 +6,7 @@
     <title>Sync Health — Asset Sync Console</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="/static/styles.css?v=20260309f" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260310c" />
   </head>
   <body>
     <div class="app-shell">
@@ -58,6 +58,7 @@
             <button id="sidebar-toggle-btn" class="menu-toggle" type="button" aria-label="Toggle sidebar">
               <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
+            <span id="health-dot" class="health-dot health-dot--unknown" title="Connection status unknown"></span>
             <h1>Asset Sync Console</h1>
           </div>
           <div class="topbar-right">
@@ -115,6 +116,18 @@
               </div>
             </section>
 
+            <!-- Sync Trend Chart -->
+            <section class="card flow">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Sync Trend (Last 7 Days)</div>
+                  <div class="card-subtitle">Daily success rate and failed item counts</div>
+                </div>
+              </div>
+              <div id="sync-trend-empty" class="muted" hidden>Not enough data yet.</div>
+              <canvas id="sync-trend-chart" aria-label="Sync trend chart"></canvas>
+            </section>
+
             <!-- Queue + System Snapshot -->
             <section class="grid two">
               <div class="card flow">
@@ -138,6 +151,11 @@
                   <div>
                     <div class="card-title">Items Needing Attention</div>
                     <div class="card-subtitle">Failed or partially synced records</div>
+                  </div>
+                  <div class="card-actions">
+                    <button id="retry-all-failed-btn" class="soft btn-sm" type="button" disabled>
+                      Retry All Failed (0)
+                    </button>
                   </div>
                 </div>
                 <div id="failed-partial-events" class="event-list"></div>
@@ -179,6 +197,7 @@
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
     <script src="/static/sidebar.js?v=20260309f"></script>
-    <script src="/static/sync-status.js?v=20260309f"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="/static/sync-status.js?v=20260310c"></script>
   </body>
 </html>

@@ -5,6 +5,9 @@ const state = {
   coreKeys: [],
   authRequired: false,
   authenticated: false,
+  scheduleRows: [],
+  scheduleUnparsed: [],
+  scheduleRowSeed: 0,
 };
 
 async function apiFetch(url, options = {}) {
@@ -41,6 +44,220 @@ function notify(message, type = "info") {
   toast.textContent = message;
   root.appendChild(toast);
   window.setTimeout(() => toast.remove(), 2600);
+}
+
+const HEALTH_DOT_VARIANTS = ["health-dot--healthy", "health-dot--degraded", "health-dot--critical", "health-dot--unknown"];
+
+function circuitState(snapshot) {
+  if (snapshot && typeof snapshot === "object") {
+    if (snapshot.circuit_open === true) return "open";
+    if (snapshot.circuit_open === false) return "closed";
+    const state = String(snapshot.state || snapshot.status || "").toLowerCase();
+    if (state.includes("open")) return "open";
+    if (state.includes("close")) return "closed";
+    if (state) return state;
+  }
+  return "unknown";
+}
+
+function resilienceEntries(payload) {
+  const raw = payload?.resilience || payload?.checks?.circuit_breakers || payload?.checks?.resilience || {};
+  if (!raw || typeof raw !== "object") return [];
+  return Object.entries(raw).map(([service, snapshot]) => ({
+    service,
+    state: circuitState(snapshot),
+  }));
+}
+
+function setHealthDotVariant(variant, titleText) {
+  const dot = $("health-dot");
+  if (!dot) return;
+  dot.classList.remove(...HEALTH_DOT_VARIANTS);
+  dot.classList.add(`health-dot--${variant}`);
+  dot.setAttribute("title", titleText);
+}
+
+async function updateHealthDot() {
+  try {
+    const payload = await apiFetch("/api/health");
+    const circuits = resilienceEntries(payload);
+    if (!circuits.length) {
+      setHealthDotVariant("unknown", "No circuit breaker data available.");
+      return;
+    }
+    const openCount = circuits.filter((entry) => entry.state === "open").length;
+    const variant =
+      openCount === 0 ? "healthy" : openCount === circuits.length ? "critical" : "degraded";
+    const titleText = circuits.map((entry) => `${entry.service}: ${entry.state}`).join(" | ");
+    setHealthDotVariant(variant, titleText);
+  } catch (error) {
+    setHealthDotVariant("critical", `Health check failed: ${error.message}`);
+  }
+}
+
+function formatDate(isoDate) {
+  if (!isoDate) return "-";
+  const parsed = new Date(isoDate);
+  if (Number.isNaN(parsed.getTime())) return isoDate;
+  return parsed.toLocaleString();
+}
+
+const SCHEDULE_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const SCHEDULE_DAY_LABELS = {
+  0: "Sun",
+  1: "Mon",
+  2: "Tue",
+  3: "Wed",
+  4: "Thu",
+  5: "Fri",
+  6: "Sat",
+};
+
+function nextScheduleRowId() {
+  state.scheduleRowSeed += 1;
+  return `schedule-row-${state.scheduleRowSeed}`;
+}
+
+function normalizeScheduleDays(days) {
+  const daySet = new Set(
+    (days || [])
+      .map((day) => Number(day))
+      .filter((day) => Number.isInteger(day) && SCHEDULE_DAY_ORDER.includes(day))
+  );
+  return SCHEDULE_DAY_ORDER.filter((day) => daySet.has(day));
+}
+
+function createScheduleRow(config = {}) {
+  const normalizedDays = normalizeScheduleDays(config.days);
+  let startHour = Number(config.startHour);
+  if (!Number.isInteger(startHour) || startHour < 0 || startHour > 23) {
+    startHour = 9;
+  }
+  let endHour = Number(config.endHour);
+  if (!Number.isInteger(endHour) || endHour < 1 || endHour > 24) {
+    endHour = Math.min(24, startHour + 8);
+  }
+  if (endHour <= startHour) {
+    endHour = Math.min(24, startHour + 1);
+  }
+  return {
+    id: nextScheduleRowId(),
+    days: normalizedDays.length ? normalizedDays : [1, 2, 3, 4, 5],
+    startHour,
+    endHour,
+  };
+}
+
+function splitScheduleExpressions(rawValue) {
+  return String(rawValue || "")
+    .replace(/\r/g, "")
+    .split(/[\n;]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parseCronDayField(weekdayField) {
+  const expr = String(weekdayField || "").trim();
+  if (!expr || expr === "*") {
+    return [...SCHEDULE_DAY_ORDER];
+  }
+  if (expr.includes("/")) {
+    return null;
+  }
+  const values = [];
+  const tokens = expr.split(",").map((token) => token.trim()).filter(Boolean);
+  for (const token of tokens) {
+    if (token.includes("-")) {
+      const [rawStart, rawEnd] = token.split("-", 2);
+      const start = Number(rawStart);
+      const end = Number(rawEnd);
+      if (!Number.isInteger(start) || !Number.isInteger(end)) {
+        return null;
+      }
+      const normalizedStart = start === 7 ? 0 : start;
+      const normalizedEnd = end === 7 ? 0 : end;
+      if (
+        normalizedStart < 0 ||
+        normalizedStart > 6 ||
+        normalizedEnd < 0 ||
+        normalizedEnd > 6 ||
+        normalizedStart > normalizedEnd
+      ) {
+        return null;
+      }
+      for (let day = normalizedStart; day <= normalizedEnd; day += 1) {
+        values.push(day);
+      }
+      continue;
+    }
+    const numeric = Number(token);
+    if (!Number.isInteger(numeric)) {
+      return null;
+    }
+    const normalized = numeric === 7 ? 0 : numeric;
+    if (normalized < 0 || normalized > 6) {
+      return null;
+    }
+    values.push(normalized);
+  }
+  const normalizedValues = normalizeScheduleDays(values);
+  return normalizedValues.length ? normalizedValues : null;
+}
+
+function parseCronHourField(hourField) {
+  const expr = String(hourField || "").trim();
+  if (!expr || expr === "*") {
+    return [{ startHour: 0, endHour: 24 }];
+  }
+  if (expr.includes("/")) {
+    return null;
+  }
+  const ranges = [];
+  const tokens = expr.split(",").map((token) => token.trim()).filter(Boolean);
+  for (const token of tokens) {
+    if (token.includes("-")) {
+      const [rawStart, rawEnd] = token.split("-", 2);
+      const start = Number(rawStart);
+      const end = Number(rawEnd);
+      if (!Number.isInteger(start) || !Number.isInteger(end)) {
+        return null;
+      }
+      if (start < 0 || end > 23 || start > end) {
+        return null;
+      }
+      ranges.push({ startHour: start, endHour: end + 1 });
+      continue;
+    }
+    const numeric = Number(token);
+    if (!Number.isInteger(numeric) || numeric < 0 || numeric > 23) {
+      return null;
+    }
+    ranges.push({ startHour: numeric, endHour: numeric + 1 });
+  }
+  return ranges.length ? ranges : null;
+}
+
+function parseScheduleExpression(expression) {
+  const fields = String(expression || "").trim().split(/\s+/);
+  if (fields.length !== 5) {
+    return null;
+  }
+  const [minuteField, hourField, dayField, monthField, weekdayField] = fields;
+  if (minuteField !== "*" || dayField !== "*" || monthField !== "*") {
+    return null;
+  }
+  const days = parseCronDayField(weekdayField);
+  const hourRanges = parseCronHourField(hourField);
+  if (!days || !hourRanges) {
+    return null;
+  }
+  return hourRanges.map((range) =>
+    createScheduleRow({
+      days,
+      startHour: range.startHour,
+      endHour: range.endHour,
+    })
+  );
 }
 
 function setAuthView() {
@@ -82,6 +299,283 @@ function parseEditorText(text) {
   return values;
 }
 
+function scheduleDayLabel(days) {
+  const normalized = normalizeScheduleDays(days);
+  if (normalized.length === 7) return "Every day";
+  return normalized.map((day) => SCHEDULE_DAY_LABELS[day]).join(", ");
+}
+
+function scheduleHourLabel(hour) {
+  const clamped = Math.max(0, Math.min(24, Number(hour)));
+  return `${String(clamped).padStart(2, "0")}:00`;
+}
+
+function scheduleHourExpression(startHour, endHour) {
+  if (startHour <= 0 && endHour >= 24) {
+    return "*";
+  }
+  if (endHour <= startHour + 1) {
+    return String(startHour);
+  }
+  return `${startHour}-${endHour - 1}`;
+}
+
+function scheduleDayExpression(days) {
+  const normalized = normalizeScheduleDays(days);
+  return normalized.length === 7 ? "*" : normalized.join(",");
+}
+
+function scheduleExpressionFromRow(row) {
+  return `* ${scheduleHourExpression(row.startHour, row.endHour)} * * ${scheduleDayExpression(row.days)}`;
+}
+
+function scheduleSummary(row) {
+  return `${scheduleDayLabel(row.days)} | ${scheduleHourLabel(row.startHour)}-${scheduleHourLabel(row.endHour)}`;
+}
+
+function serializeScheduleRows() {
+  const generated = state.scheduleRows.map((row) => scheduleExpressionFromRow(row));
+  return [...generated, ...state.scheduleUnparsed].join("; ");
+}
+
+function updateSchedulePreview() {
+  const preview = $("schedule-preview");
+  if (!preview) return;
+  const generated = state.scheduleRows.map((row) => ({
+    summary: scheduleSummary(row),
+    expression: scheduleExpressionFromRow(row),
+  }));
+  const lines = [];
+  if (!generated.length && !state.scheduleUnparsed.length) {
+    lines.push("Always open: no schedule windows are configured.");
+    lines.push("Saved value: (empty)");
+    preview.textContent = lines.join("\n");
+    return;
+  }
+  generated.forEach((item, index) => {
+    lines.push(`Window ${index + 1}: ${item.summary}`);
+    lines.push(`  ${item.expression}`);
+  });
+  if (state.scheduleUnparsed.length) {
+    lines.push("");
+    lines.push("Preserved custom cron windows:");
+    state.scheduleUnparsed.forEach((expression) => lines.push(`  ${expression}`));
+  }
+  lines.push("");
+  lines.push(`Saved value: ${serializeScheduleRows()}`);
+  preview.textContent = lines.join("\n");
+}
+
+function syncScheduleToEnvEditor() {
+  state.envValues.AUTOSYNC_CRON_WINDOWS = serializeScheduleRows();
+  syncRawEditor();
+  updateSchedulePreview();
+}
+
+function loadScheduleFromEnv(rawValue) {
+  const expressions = splitScheduleExpressions(rawValue);
+  const parsedRows = [];
+  const unparsed = [];
+  expressions.forEach((expression) => {
+    const rows = parseScheduleExpression(expression);
+    if (!rows || !rows.length) {
+      unparsed.push(expression);
+      return;
+    }
+    parsedRows.push(...rows);
+  });
+  state.scheduleRows = parsedRows;
+  state.scheduleUnparsed = unparsed;
+  renderScheduleRows();
+  updateSchedulePreview();
+}
+
+function renderScheduleRows() {
+  const container = $("schedule-window-list");
+  if (!container) return;
+  if (!state.scheduleRows.length) {
+    container.innerHTML = `<div class="schedule-window-empty">No windows configured. Autosync is currently allowed at all times.</div>`;
+  } else {
+    container.innerHTML = state.scheduleRows
+      .map((row, index) => {
+        const endHour = row.endHour <= row.startHour ? Math.min(24, row.startHour + 1) : row.endHour;
+        row.endHour = endHour;
+        const dayButtons = SCHEDULE_DAY_ORDER.map((day) => {
+          const active = row.days.includes(day) ? " active" : "";
+          return `<button type="button" class="schedule-day-btn${active}" data-row-id="${row.id}" data-day="${day}">${SCHEDULE_DAY_LABELS[day]}</button>`;
+        }).join("");
+        const startOptions = Array.from({ length: 24 }, (_, hour) => {
+          const selected = hour === row.startHour ? " selected" : "";
+          return `<option value="${hour}"${selected}>${scheduleHourLabel(hour)}</option>`;
+        }).join("");
+        const endOptions = Array.from({ length: 24 - row.startHour }, (_, offset) => {
+          const hour = row.startHour + 1 + offset;
+          const selected = hour === row.endHour ? " selected" : "";
+          return `<option value="${hour}"${selected}>${scheduleHourLabel(hour)}</option>`;
+        }).join("");
+        return `
+          <article class="schedule-window-row">
+            <div class="row spread">
+              <strong>Window ${index + 1}</strong>
+              <button type="button" class="danger btn-sm schedule-remove-btn" data-row-id="${row.id}">Remove</button>
+            </div>
+            <div class="schedule-day-grid" role="group" aria-label="Select days for window ${index + 1}">
+              ${dayButtons}
+            </div>
+            <div class="schedule-hours">
+              <label class="field-label-inline" for="schedule-start-${row.id}">Start</label>
+              <select id="schedule-start-${row.id}" class="schedule-start-select" data-row-id="${row.id}">
+                ${startOptions}
+              </select>
+              <label class="field-label-inline" for="schedule-end-${row.id}">End</label>
+              <select id="schedule-end-${row.id}" class="schedule-end-select" data-row-id="${row.id}">
+                ${endOptions}
+              </select>
+              <span class="muted">${scheduleSummary(row)}</span>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+  }
+  if (state.scheduleUnparsed.length) {
+    const note = document.createElement("div");
+    note.className = "schedule-window-empty";
+    note.textContent = `${state.scheduleUnparsed.length} custom cron window(s) were preserved as-is.`;
+    container.appendChild(note);
+  }
+}
+
+function findScheduleRow(rowId) {
+  return state.scheduleRows.find((row) => row.id === rowId) || null;
+}
+
+function updateScheduleStatusPill(snapshot, errorMessage = "") {
+  const pill = $("schedule-window-status");
+  if (!pill) return;
+  if (errorMessage) {
+    pill.className = "pill error";
+    pill.textContent = `Status unavailable: ${errorMessage}`;
+    return;
+  }
+  const windowCount = Array.isArray(snapshot?.windows) ? snapshot.windows.length : 0;
+  const nowLabel = formatDate(snapshot?.now_local || snapshot?.now_utc);
+  if (!snapshot?.enabled) {
+    pill.className = "pill info";
+    pill.textContent = `Always open | ${nowLabel}`;
+    return;
+  }
+  if (snapshot.window_open) {
+    pill.className = "pill success";
+    pill.textContent = `Open now | ${windowCount} windows | ${nowLabel}`;
+    return;
+  }
+  pill.className = "pill warning";
+  pill.textContent = `Closed now | ${windowCount} windows | ${nowLabel}`;
+}
+
+async function refreshScheduleStatus() {
+  try {
+    const snapshot = await apiFetch("/api/sync/schedule");
+    updateScheduleStatusPill(snapshot);
+  } catch (error) {
+    updateScheduleStatusPill(null, error.message);
+    throw error;
+  }
+}
+
+function addScheduleWindow() {
+  state.scheduleRows.push(
+    createScheduleRow({
+      days: [1, 2, 3, 4, 5],
+      startHour: 9,
+      endHour: 17,
+    })
+  );
+  renderScheduleRows();
+  syncScheduleToEnvEditor();
+}
+
+function onScheduleListClick(event) {
+  const removeButton = event.target.closest(".schedule-remove-btn");
+  if (removeButton) {
+    const rowId = removeButton.getAttribute("data-row-id");
+    if (!rowId) return;
+    state.scheduleRows = state.scheduleRows.filter((row) => row.id !== rowId);
+    renderScheduleRows();
+    syncScheduleToEnvEditor();
+    return;
+  }
+
+  const dayButton = event.target.closest(".schedule-day-btn");
+  if (!dayButton) return;
+  const rowId = dayButton.getAttribute("data-row-id");
+  const day = Number(dayButton.getAttribute("data-day"));
+  if (!rowId || !Number.isInteger(day)) return;
+  const row = findScheduleRow(rowId);
+  if (!row) return;
+  const selectedDays = new Set(row.days);
+  if (selectedDays.has(day)) {
+    if (selectedDays.size === 1) {
+      notify("Each window must include at least one day.", "warning");
+      return;
+    }
+    selectedDays.delete(day);
+  } else {
+    selectedDays.add(day);
+  }
+  row.days = normalizeScheduleDays([...selectedDays]);
+  renderScheduleRows();
+  syncScheduleToEnvEditor();
+}
+
+function onScheduleListChange(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) return;
+  const rowId = target.getAttribute("data-row-id");
+  if (!rowId) return;
+  const row = findScheduleRow(rowId);
+  if (!row) return;
+  const numeric = Number(target.value);
+  if (!Number.isInteger(numeric)) return;
+  if (target.classList.contains("schedule-start-select")) {
+    row.startHour = Math.max(0, Math.min(23, numeric));
+    if (row.endHour <= row.startHour) {
+      row.endHour = Math.min(24, row.startHour + 1);
+    }
+  } else if (target.classList.contains("schedule-end-select")) {
+    row.endHour = Math.max(1, Math.min(24, numeric));
+    if (row.endHour <= row.startHour) {
+      row.endHour = Math.min(24, row.startHour + 1);
+    }
+  } else {
+    return;
+  }
+  renderScheduleRows();
+  syncScheduleToEnvEditor();
+}
+
+async function saveScheduleWindows() {
+  const saveButton = $("save-schedule-btn");
+  if (saveButton) {
+    saveButton.classList.add("is-busy");
+  }
+  const value = serializeScheduleRows();
+  state.envValues.AUTOSYNC_CRON_WINDOWS = value;
+  syncRawEditor();
+  await apiFetch("/api/settings/env", {
+    method: "POST",
+    body: JSON.stringify({ values: { AUTOSYNC_CRON_WINDOWS: value } }),
+  });
+  await loadEnv();
+  await refreshScheduleStatus();
+  $("settings-message").textContent = "Sync schedule saved.";
+  notify("Sync schedule saved.", "info");
+  if (saveButton) {
+    saveButton.classList.remove("is-busy");
+  }
+}
+
 function renderCoreInputs() {
   const container = $("core-env-grid");
   container.innerHTML = "";
@@ -100,6 +594,9 @@ function renderCoreInputs() {
       const key = event.target.getAttribute("data-key");
       if (!key) return;
       state.envValues[key] = event.target.value;
+      if (key === "AUTOSYNC_CRON_WINDOWS") {
+        loadScheduleFromEnv(state.envValues[key]);
+      }
       syncRawEditor();
     });
   });
@@ -168,6 +665,7 @@ async function loadEnv() {
   state.coreKeys = data.core_keys || [];
   renderCoreInputs();
   renderAdditionalRows();
+  loadScheduleFromEnv(state.envValues.AUTOSYNC_CRON_WINDOWS || "");
   syncRawEditor();
   $("settings-message").textContent = reveal
     ? "Sensitive values are currently visible."
@@ -189,6 +687,7 @@ async function loginSettings() {
   await refreshAuthStatus();
   if (!state.authRequired || state.authenticated) {
     await loadEnv();
+    await refreshScheduleStatus();
     notify("Settings unlocked.", "info");
   }
 }
@@ -238,6 +737,7 @@ async function saveEnv() {
   state.envValues = { ...(data.values || {}) };
   renderCoreInputs();
   renderAdditionalRows();
+  loadScheduleFromEnv(state.envValues.AUTOSYNC_CRON_WINDOWS || "");
   syncRawEditor();
   $("settings-message").textContent = "Configuration saved.";
   notify("Configuration saved successfully.", "info");
@@ -263,6 +763,9 @@ async function withLoading(fn) {
     if ($("save-env-btn")) {
       $("save-env-btn").classList.remove("is-busy");
     }
+    if ($("save-schedule-btn")) {
+      $("save-schedule-btn").classList.remove("is-busy");
+    }
   }
 }
 
@@ -270,9 +773,13 @@ $("reload-env-btn").addEventListener("click", () => withLoading(loadEnv));
 $("save-env-btn").addEventListener("click", () => withLoading(saveEnv));
 $("secret-toggle").addEventListener("change", () => withLoading(loadEnv));
 $("add-env-row-btn").addEventListener("click", addAdditionalRow);
+$("add-schedule-window-btn").addEventListener("click", addScheduleWindow);
+$("save-schedule-btn").addEventListener("click", () => withLoading(saveScheduleWindows));
 $("settings-login-btn").addEventListener("click", () => withLoading(loginSettings));
 $("settings-logout-btn").addEventListener("click", () => withLoading(logoutSettings));
 $("test-notify-btn").addEventListener("click", () => withLoading(testNotification));
+$("schedule-window-list").addEventListener("click", onScheduleListClick);
+$("schedule-window-list").addEventListener("change", onScheduleListChange);
 $("settings-password").addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     withLoading(loginSettings);
@@ -285,5 +792,9 @@ withLoading(async () => {
     $("settings-auth-message").textContent = "Please unlock settings to continue.";
     return;
   }
-  await loadEnv();
+  await Promise.all([loadEnv(), refreshScheduleStatus()]);
 });
+
+updateHealthDot().catch(() => {});
+window.setInterval(() => updateHealthDot().catch(() => {}), 30000);
+window.setInterval(() => refreshScheduleStatus().catch(() => {}), 60000);
