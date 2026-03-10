@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 let syncTrendChart = null;
-let failedPartialRetryIdentifiers = [];
+let failedPartialRenderedCount = 0;
 
 async function apiFetch(url, options = {}) {
   const response = await fetch(url, options);
@@ -296,24 +296,12 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function retryIdentifiers(events) {
-  const identifiers = new Set();
-  (events || []).forEach((event) => {
-    const identifier = String(event?.identifier || "").trim();
-    if (identifier) {
-      identifiers.add(identifier);
-    }
-  });
-  return Array.from(identifiers);
-}
-
 function updateRetryAllFailedButton(events) {
   const button = $("retry-all-failed-btn");
   if (!button) return;
-  failedPartialRetryIdentifiers = retryIdentifiers(events);
-  const count = failedPartialRetryIdentifiers.length;
-  button.textContent = `Retry All Failed (${count})`;
-  button.disabled = count === 0;
+  failedPartialRenderedCount = Array.isArray(events) ? events.length : 0;
+  button.textContent = `Retry All Failed (${failedPartialRenderedCount})`;
+  button.disabled = failedPartialRenderedCount === 0;
 }
 
 function renderAttentionEvents(events) {
@@ -330,8 +318,8 @@ function renderAttentionEvents(events) {
       const retryButton = identifier
         ? `<button class="soft btn-xs retry-item-btn" data-identifier="${escapeHtml(
             identifier
-          )}" type="button" title="Retry this identifier">↺ Retry</button>`
-        : `<button class="ghost btn-xs retry-item-btn" type="button" disabled title="Identifier unavailable">↺ Retry</button>`;
+          )}" type="button" title="Retry this identifier">&#8634; Retry</button>`
+        : `<button class="ghost btn-xs retry-item-btn" type="button" disabled title="Identifier unavailable">&#8634; Retry</button>`;
       return `
       <div class="event-item">
         <div class="row spread">
@@ -435,7 +423,7 @@ async function loadData() {
     renderKpis(status, overview);
     renderQueueMetrics(status.queue_metrics || {});
     const failedPartial = [...(status.failed_events || []), ...(status.partial_events || [])].slice(0, 30);
-    renderEvents("failed-partial-events", failedPartial);
+    renderAttentionEvents(failedPartial);
     renderEvents("recent-events", status.recent_events || []);
     renderAuditHistory(audit.items || []);
     renderDiffHistory(audit.items || []);
@@ -456,12 +444,62 @@ async function loadData() {
   }
 }
 
+async function retryAllFailedItems() {
+  const button = $("retry-all-failed-btn");
+  if (failedPartialRenderedCount === 0) {
+    notify("No failed or partial items to retry.", "info");
+    return;
+  }
+  try {
+    setButtonBusy(button, true);
+    setLoading(true);
+    notify(`Retrying ${failedPartialRenderedCount} items...`, "info");
+    await apiFetch("/api/sync/reconcile", { method: "POST" });
+    await loadData();
+    notify("Retry complete", "info");
+  } finally {
+    setButtonBusy(button, false);
+    setLoading(false);
+  }
+}
+
+async function retrySingleItem(identifier, button) {
+  const target = String(identifier || "").trim();
+  if (!target) return;
+  try {
+    setButtonBusy(button, true);
+    setLoading(true);
+    await apiFetch("/api/transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifiers: [target], dry_run: false }),
+    });
+    await loadData();
+    notify("Retry complete", "info");
+  } finally {
+    setButtonBusy(button, false);
+    setLoading(false);
+  }
+}
+
 $("sync-refresh-btn").addEventListener("click", () => {
   loadData().catch((error) => notify(error.message, "error"));
 });
 
 $("overview-window").addEventListener("change", () => {
   loadData().catch((error) => notify(error.message, "error"));
+});
+
+$("retry-all-failed-btn").addEventListener("click", () => {
+  retryAllFailedItems().catch((error) => notify(error.message, "error"));
+});
+
+$("failed-partial-events").addEventListener("click", (event) => {
+  const button = event.target.closest(".retry-item-btn");
+  if (!button || button.disabled) return;
+  const identifier = button.getAttribute("data-identifier");
+  if (!identifier) return;
+  retrySingleItem(identifier, button).catch((error) => notify(error.message, "error"));
 });
 
 $("sync-run-now-btn").addEventListener("click", () => {
