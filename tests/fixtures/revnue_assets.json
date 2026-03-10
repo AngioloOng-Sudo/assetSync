@@ -1,17 +1,1 @@
-[
-  {
-    "id": 1,
-    "company": "1",
-    "name": "Finance-Laptop-01",
-    "serial_number": "GSIS-001",
-    "asset_tag": "GSIS-001",
-    "manufacturer": "Dell",
-    "model": "Latitude 5440",
-    "template_fields": [
-      {
-        "field_key": "department",
-        "value": "Finance"
-      }
-    ]
-  }
-]
+[]

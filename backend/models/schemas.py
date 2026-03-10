@@ -23,6 +23,15 @@ class TransferRequest(BaseModel):
         return [identifier.strip() for identifier in value if identifier and identifier.strip()]
 
 
+class AssetDetailResponse(BaseModel):
+    """Detailed asset view payload for dashboard slide-over panel."""
+
+    identifier: str
+    kaseya: dict[str, Any] | None = None
+    revnue_match: dict[str, Any] | None = None
+    sync_events: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class DeleteAssetRequest(BaseModel):
     """Delete request for a Revnue asset."""
 

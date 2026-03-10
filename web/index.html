@@ -6,7 +6,7 @@
     <title>Dashboard — Asset Sync Console</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="/static/styles.css?v=20260309i" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260310a" />
   </head>
   <body>
     <div class="app-shell">
@@ -307,7 +307,15 @@
     </div>
 
     <!-- ── Dry Run Preview Modal ── -->
-    <div id="dry-run-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dry-run-modal-title">
+    <div
+      id="dry-run-modal"
+      data-legacy-id="transfer-modal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dry-run-modal-title"
+    >
       <div class="modal-content modal-content-lg">
         <div class="modal-header">
           <h2 class="modal-title" id="dry-run-modal-title">Dry Run Preview</h2>
@@ -371,9 +379,54 @@
       </div>
     </div>
 
+    <div id="asset-detail-backdrop" class="asset-panel-backdrop" aria-hidden="true"></div>
+    <aside
+      id="asset-detail-panel"
+      class="asset-panel"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="asset-detail-title"
+    >
+      <div class="asset-panel-header">
+        <div>
+          <div class="card-subtitle">Asset Detail</div>
+          <h2 id="asset-detail-title" class="modal-title">-</h2>
+          <p id="asset-detail-subtitle" class="muted mt-0">Select a source asset to view detail.</p>
+        </div>
+        <button id="close-asset-detail-btn" class="ghost btn-sm" type="button" aria-label="Close asset detail">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Close
+        </button>
+      </div>
+      <div class="asset-panel-body">
+        <section>
+          <div class="section-title">Source Fields</div>
+          <div id="asset-detail-source" class="asset-field-list"></div>
+        </section>
+        <section>
+          <div class="section-title">Destination Fields</div>
+          <div id="asset-detail-destination" class="asset-field-list"></div>
+          <div id="asset-detail-destination-empty" class="empty-state" hidden>
+            <p>Not yet synced to destination.</p>
+          </div>
+          <div class="row end">
+            <button id="asset-detail-sync-btn" class="primary btn-sm" type="button">
+              <svg viewBox="0 0 24 24"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Sync Now
+            </button>
+          </div>
+        </section>
+        <section>
+          <div class="section-title">Sync Timeline</div>
+          <div id="asset-detail-timeline" class="timeline"></div>
+        </section>
+      </div>
+    </aside>
+
     <div id="loading-overlay" class="overlay"><div class="spinner"></div></div>
     <div id="toast-root" class="toast-root"></div>
     <script src="/static/sidebar.js?v=20260309f"></script>
-    <script src="/static/app.js?v=20260309i"></script>
+    <script src="/static/app.js?v=20260310a"></script>
   </body>
 </html>

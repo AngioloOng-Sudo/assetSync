@@ -15,6 +15,43 @@ from backend.services.settings_manager import get_bool_setting, get_setting
 from backend.utils.file_io import read_json, write_json
 
 
+def _dict_value_case_insensitive(payload: dict[str, Any], target_key: str) -> Any:
+    lowered_target = target_key.lower()
+    for key, value in payload.items():
+        if str(key).lower() == lowered_target:
+            return value
+    return None
+
+
+def _extract_assets_payload(payload: Any, depth: int = 0) -> tuple[list[Any], bool]:
+    if depth > 4:
+        return [], False
+    if isinstance(payload, list):
+        return payload, True
+    if not isinstance(payload, dict):
+        return [], False
+
+    for key in ("items", "value", "data", "results", "assets", "result", "rows", "records"):
+        candidate = _dict_value_case_insensitive(payload, key)
+        if candidate is None:
+            continue
+        if isinstance(candidate, list):
+            return candidate, True
+        if isinstance(candidate, dict):
+            nested_items, recognized = _extract_assets_payload(candidate, depth + 1)
+            return nested_items, recognized
+        return [], True
+
+    for value in payload.values():
+        if isinstance(value, list):
+            return value, True
+        if isinstance(value, dict):
+            nested_items, recognized = _extract_assets_payload(value, depth + 1)
+            if recognized:
+                return nested_items, True
+    return [], False
+
+
 def _load_mock_assets() -> list[dict[str, Any]]:
     assets = read_json(MOCK_REVNUE_ASSETS_PATH, [])
     if get_bool_setting("USE_MOCK_FIXTURE_REPLAY", False):
@@ -90,9 +127,20 @@ def fetch_revnue_assets(
         timeout=20,
     )
     payload = response.json()
-    if isinstance(payload, list):
-        return _normalize_assets(payload, "revnue_api")
-    return _normalize_assets(payload.get("items", []), "revnue_api")
+    items, recognized = _extract_assets_payload(payload)
+    if not recognized:
+        log_activity(
+            level="warning",
+            category="revnue_client",
+            message="Revnue response shape was not recognized.",
+            details={
+                "url": _asset_url(),
+                "payload_type": type(payload).__name__,
+                "payload_keys": list(payload.keys())[:15] if isinstance(payload, dict) else [],
+            },
+        )
+        return []
+    return _normalize_assets(items, "revnue_api")
 
 
 def fetch_all_revnue_assets(company: str | int | None = None, page_size: int = 100) -> list[dict[str, Any]]:

@@ -122,6 +122,16 @@ def test_requested_alias_endpoints_exist():
     revnue_response = client.get("/api/revnue/assets")
     assert revnue_response.status_code == 200
 
+    strev_response = client.get("/api/strev/assets")
+    assert strev_response.status_code == 200
+
+    dashboard_assets_response = client.get("/api/dashboard/assets")
+    assert dashboard_assets_response.status_code == 200
+    dashboard_payload = dashboard_assets_response.json()
+    assert "kaseya" in dashboard_payload
+    assert "strev" in dashboard_payload
+    assert "revnue" in dashboard_payload
+
     logs_response = client.get("/api/logs?limit=10")
     assert logs_response.status_code == 200
     assert "channels" in logs_response.json()

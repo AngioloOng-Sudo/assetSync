@@ -265,7 +265,8 @@ def transfer_kaseya_assets_to_revnue(
 
         try:
             previous_hash = get_asset_content_hash(identifier)
-            if existing and previous_hash == content_hash and not dry_run:
+            skip_unchanged = get_bool_setting("TRANSFER_SKIP_UNCHANGED", False)
+            if skip_unchanged and existing and previous_hash == content_hash and not dry_run:
                 summary["skipped"] += 1
                 result = {
                     "identifier": identifier,

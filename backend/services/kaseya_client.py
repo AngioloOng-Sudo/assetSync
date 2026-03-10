@@ -133,21 +133,47 @@ def _normalize_assets(items: Any, source: str) -> list[dict[str, Any]]:
     return normalized
 
 
-def _extract_assets_payload(payload: Any) -> tuple[list[Any], bool]:
+def _dict_value_case_insensitive(payload: dict[str, Any], target_key: str) -> Any:
+    lowered_target = target_key.lower()
+    for key, value in payload.items():
+        if str(key).lower() == lowered_target:
+            return value
+    return None
+
+
+def _extract_assets_payload(payload: Any, depth: int = 0) -> tuple[list[Any], bool]:
     """
     Return candidate list payload plus recognition flag.
 
     `recognized` tells the caller whether the response shape looks valid,
     even when there are zero assets.
     """
+    if depth > 4:
+        return [], False
     if isinstance(payload, list):
         return payload, True
     if not isinstance(payload, dict):
         return [], False
-    for key in ("items", "value", "data", "results", "assets"):
-        if key in payload:
-            candidate = payload.get(key)
-            return candidate if isinstance(candidate, list) else [], True
+
+    for key in ("items", "value", "data", "results", "assets", "result", "rows", "records", "entityresults"):
+        candidate = _dict_value_case_insensitive(payload, key)
+        if candidate is None:
+            continue
+        if isinstance(candidate, list):
+            return candidate, True
+        if isinstance(candidate, dict):
+            nested_items, recognized = _extract_assets_payload(candidate, depth + 1)
+            return nested_items, recognized
+        return [], True
+
+    # Fallback for uncommon wrappers: if the dict includes any list-like field, try it.
+    for value in payload.values():
+        if isinstance(value, list):
+            return value, True
+        if isinstance(value, dict):
+            nested_items, recognized = _extract_assets_payload(value, depth + 1)
+            if recognized:
+                return nested_items, True
     return [], False
 
 
@@ -177,6 +203,17 @@ def fetch_kaseya_assets(top: int = 100, skip: int = 0) -> list[dict[str, Any]]:
             items, recognized = _extract_assets_payload(payload)
             if recognized:
                 return _normalize_assets(items, "kaseya_api")
+            log_activity(
+                level="warning",
+                category="kaseya_client",
+                message="Kaseya response shape was not recognized.",
+                details={
+                    "url": _base_assets_url(),
+                    "params": params,
+                    "payload_type": type(payload).__name__,
+                    "payload_keys": list(payload.keys())[:15] if isinstance(payload, dict) else [],
+                },
+            )
         except requests.RequestException as exc:
             detail = _extract_http_error_message(exc)
             last_error = RuntimeError(f"Kaseya upstream error: {detail}")
@@ -184,7 +221,7 @@ def fetch_kaseya_assets(top: int = 100, skip: int = 0) -> list[dict[str, Any]]:
 
     if last_error:
         raise last_error
-    return []
+    raise RuntimeError("Kaseya upstream response shape not recognized.")
 
 
 def fetch_all_kaseya_assets(page_size: int = 100, max_pages: int = 100) -> list[dict[str, Any]]:
@@ -221,7 +258,9 @@ def _filter_lookup(identifier: str) -> dict[str, Any] | None:
     except Exception:
         return None
     payload = response.json()
-    items = payload if isinstance(payload, list) else payload.get("items", [])
+    items, recognized = _extract_assets_payload(payload)
+    if not recognized:
+        return None
     normalized = _normalize_assets(items, "filter_lookup")
     return normalized[0] if normalized else None
 

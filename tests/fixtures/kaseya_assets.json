@@ -14,17 +14,35 @@
     "detail_source": "fixture_kaseya"
   },
   {
-    "Identifier": "GSIS-005",
-    "Name": "Admin-Desktop-05",
-    "Manufacturer": "HP",
-    "Model": "EliteDesk 600",
-    "ModifiedDate": "2026-03-06T02:12:00Z",
+    "Identifier": "GSIS-002",
+    "Name": "HR-Laptop-02",
+    "Manufacturer": "Lenovo",
+    "Model": "ThinkPad T14",
+    "ModifiedDate": "2026-03-05T08:25:00Z",
     "assetinfo": [
       {
         "key": "department",
-        "value": "Admin"
+        "value": "HR"
       }
     ],
+    "detail_source": "fixture_kaseya"
+  },
+  {
+    "Identifier": "GSIS-003",
+    "Name": "Ops-Desktop-03",
+    "Manufacturer": "HP",
+    "Model": "EliteDesk 800",
+    "ModifiedDate": "2026-03-06T01:05:00Z",
+    "assetinfo": [],
+    "detail_source": "fixture_kaseya"
+  },
+  {
+    "Identifier": "GSIS-004",
+    "Name": "",
+    "Manufacturer": "Acer",
+    "Model": "TravelMate",
+    "ModifiedDate": "2026-03-06T02:12:00Z",
+    "assetinfo": [],
     "detail_source": "fixture_kaseya"
   }
 ]

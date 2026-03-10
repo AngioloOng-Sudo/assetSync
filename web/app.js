@@ -6,6 +6,7 @@ const state = {
   logs: { notifications: [], messages: [], unreadCount: 0 },
   coverage: { items: [], staleDays: 7 },
   dryRun: { previewViewed: false, previewSyncReady: false, identifiers: [], selectionKey: "" },
+  assetDetail: { open: false, identifier: "" },
 };
 
 const COVERAGE_CARD_META = {
@@ -439,6 +440,179 @@ async function runDryRunPreview() {
   notify("Preview generated. No data was changed.", "info");
 }
 
+function formatFieldValue(value) {
+  if (value === null || value === undefined || value === "") return "(empty)";
+  if (Array.isArray(value)) {
+    if (!value.length) return "(empty)";
+    return value
+      .map((item) => (typeof item === "object" && item !== null ? JSON.stringify(item) : String(item)))
+      .join(", ");
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function renderAssetFieldList(containerId, data, emptyMessage) {
+  const container = $(containerId);
+  if (!container) return;
+  const entries =
+    data && typeof data === "object"
+      ? Object.entries(data).sort(([left], [right]) => left.localeCompare(right))
+      : [];
+
+  if (!entries.length) {
+    container.innerHTML = `<div class="muted">${escapeHtml(emptyMessage)}</div>`;
+    return;
+  }
+
+  container.innerHTML = entries
+    .map(
+      ([key, value]) => `
+      <div class="asset-field-row">
+        <div class="asset-field-key">${escapeHtml(key)}</div>
+        <div class="asset-field-value">${escapeHtml(formatFieldValue(value))}</div>
+      </div>
+    `
+    )
+    .join("");
+}
+
+function timelineStatusMeta(event) {
+  const eventType = String(event?.event_type || "").toLowerCase();
+  const payload = event?.payload && typeof event.payload === "object" ? event.payload : {};
+  const payloadStatus = String(payload.status || payload.result || payload.level || "").toLowerCase();
+  if (eventType.includes("retry") || payloadStatus.includes("retry")) {
+    return { icon: "🔄", label: "Retried", tone: "info" };
+  }
+  if (
+    eventType.includes("fail") ||
+    eventType.includes("error") ||
+    payloadStatus.includes("fail") ||
+    payloadStatus.includes("error")
+  ) {
+    return { icon: "❌", label: "Failed", tone: "error" };
+  }
+  if (
+    eventType.includes("partial") ||
+    payloadStatus.includes("partial") ||
+    payloadStatus.includes("warning") ||
+    payloadStatus.includes("warn")
+  ) {
+    return { icon: "⚠️", label: "Partial", tone: "warning" };
+  }
+  if (
+    eventType.includes("success") ||
+    payloadStatus.includes("success") ||
+    payloadStatus.includes("ok") ||
+    payloadStatus.includes("complete")
+  ) {
+    return { icon: "✅", label: "Success", tone: "success" };
+  }
+  return { icon: "✅", label: "Success", tone: "success" };
+}
+
+function timelineSummary(event) {
+  const payload = event?.payload && typeof event.payload === "object" ? event.payload : {};
+  if (payload.error) return String(payload.error);
+  if (payload.message) return String(payload.message);
+  if (payload.notes && typeof payload.notes === "string") return payload.notes;
+  if (event?.source) return `Source: ${event.source}`;
+  return "Event recorded.";
+}
+
+function renderAssetTimeline(events) {
+  const container = $("asset-detail-timeline");
+  if (!container) return;
+  if (!events.length) {
+    container.innerHTML = `<div class="empty-state"><p>No sync events found for this asset.</p></div>`;
+    return;
+  }
+  container.innerHTML = events
+    .map((event) => {
+      const meta = timelineStatusMeta(event);
+      const eventType = event?.event_type || "unknown_event";
+      const timestamp = formatDate(event?.created_at || event?.timestamp);
+      const summary = timelineSummary(event);
+      return `
+      <div class="timeline-item timeline-item--${meta.tone}">
+        <div class="timeline-dot" aria-hidden="true">${meta.icon}</div>
+        <div class="timeline-body">
+          <div class="row spread">
+            <strong>${escapeHtml(eventType)}</strong>
+            <span class="pill ${meta.tone}">${meta.label}</span>
+          </div>
+          <div class="muted">${escapeHtml(timestamp)}</div>
+          <div class="subtle">${escapeHtml(summary)}</div>
+        </div>
+      </div>
+    `;
+    })
+    .join("");
+}
+
+function openAssetDetailPanel() {
+  const panel = $("asset-detail-panel");
+  const backdrop = $("asset-detail-backdrop");
+  if (!panel || !backdrop) return;
+  panel.classList.add("open");
+  panel.setAttribute("aria-hidden", "false");
+  backdrop.classList.add("open");
+  backdrop.setAttribute("aria-hidden", "false");
+  state.assetDetail.open = true;
+}
+
+function closeAssetDetailPanel() {
+  const panel = $("asset-detail-panel");
+  const backdrop = $("asset-detail-backdrop");
+  if (!panel || !backdrop) return;
+  panel.classList.remove("open");
+  panel.setAttribute("aria-hidden", "true");
+  backdrop.classList.remove("open");
+  backdrop.setAttribute("aria-hidden", "true");
+  state.assetDetail.open = false;
+}
+
+function renderAssetDetailLoading(identifier) {
+  $("asset-detail-title").textContent = identifier || "-";
+  $("asset-detail-subtitle").textContent = "Loading asset details...";
+  renderAssetFieldList("asset-detail-source", null, "Loading source fields...");
+  renderAssetFieldList("asset-detail-destination", null, "Loading destination fields...");
+  $("asset-detail-timeline").innerHTML = `<div class="muted">Loading timeline...</div>`;
+  $("asset-detail-destination-empty").hidden = true;
+}
+
+function renderAssetDetail(detail) {
+  const identifier = detail?.identifier || state.assetDetail.identifier;
+  const sourceAsset = detail?.kaseya || null;
+  const destinationAsset = detail?.revnue_match || null;
+  const syncEvents = Array.isArray(detail?.sync_events) ? detail.sync_events : [];
+  $("asset-detail-title").textContent = identifier || "-";
+  $("asset-detail-subtitle").textContent = destinationAsset
+    ? "Matched destination asset found."
+    : "Not yet synced to destination.";
+  renderAssetFieldList("asset-detail-source", sourceAsset, "No source asset details available.");
+  renderAssetFieldList(
+    "asset-detail-destination",
+    destinationAsset,
+    "No destination fields found for this identifier."
+  );
+  $("asset-detail-destination-empty").hidden = !!destinationAsset;
+  renderAssetTimeline(syncEvents);
+}
+
+async function openAssetDetail(identifier) {
+  const normalizedIdentifier = String(identifier || "").trim();
+  if (!normalizedIdentifier) return;
+  state.assetDetail.identifier = normalizedIdentifier;
+  renderAssetDetailLoading(normalizedIdentifier);
+  openAssetDetailPanel();
+  const detail = await apiFetch(`/api/assets/detail/${encodeURIComponent(normalizedIdentifier)}`);
+  if (state.assetDetail.identifier !== normalizedIdentifier) return;
+  renderAssetDetail(detail);
+}
+
 function renderKaseyaTable(items) {
   const body = $("kaseya-table").querySelector("tbody");
   body.innerHTML = "";
@@ -450,6 +624,10 @@ function renderKaseyaTable(items) {
     const identifier = asset.Identifier || "";
     const checked = state.selectedIdentifiers.has(identifier) ? "checked" : "";
     const row = document.createElement("tr");
+    row.classList.add("kaseya-row-clickable");
+    row.setAttribute("tabindex", "0");
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `View detail for ${identifier || "asset"}`);
     row.classList.toggle("selected", !!checked);
     row.innerHTML = `
       <td><input type="checkbox" data-id="${identifier}" class="kaseya-select" ${checked}></td>
@@ -459,6 +637,18 @@ function renderKaseyaTable(items) {
       <td>${asset.Model || ""}</td>
       <td>${formatDate(asset.ModifiedDate)}</td>
     `;
+    row.addEventListener("click", (event) => {
+      if (!identifier) return;
+      if (event.target.closest("input, button, a, label")) return;
+      withLoading(() => openAssetDetail(identifier));
+    });
+    row.addEventListener("keydown", (event) => {
+      if (!identifier) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (event.target.closest("input, button, a, label")) return;
+      event.preventDefault();
+      withLoading(() => openAssetDetail(identifier));
+    });
     body.appendChild(row);
   });
 
@@ -748,6 +938,26 @@ function bindEvents() {
     openActivityModal();
   });
   $("close-activity-btn").addEventListener("click", () => closeActivityModal());
+  $("close-asset-detail-btn").addEventListener("click", () => closeAssetDetailPanel());
+  $("asset-detail-backdrop").addEventListener("click", () => closeAssetDetailPanel());
+  $("asset-detail-sync-btn").addEventListener("click", () => {
+    const identifier = state.assetDetail.identifier;
+    if (!identifier) {
+      notify("Select an asset first.", "warning");
+      return;
+    }
+    executeTransfer({
+      identifiers: [identifier],
+      button: $("asset-detail-sync-btn"),
+      onSuccess: () => {
+        window.setTimeout(() => {
+          if (state.assetDetail.open && state.assetDetail.identifier === identifier) {
+            withLoading(() => openAssetDetail(identifier));
+          }
+        }, 0);
+      },
+    });
+  });
   $("mark-activity-read-btn").addEventListener("click", () => {
     withLoading(markLogsRead);
   });
@@ -905,6 +1115,8 @@ function bindEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     closeDryRunModal();
+    closeAssetDetailPanel();
+    closeActivityModal();
   });
 }
 

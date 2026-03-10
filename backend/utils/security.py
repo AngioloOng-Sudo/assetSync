@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 from typing import Any
 
 SECRET_KEYWORDS = ("TOKEN", "SECRET", "PASSWORD", "KEY")
@@ -77,5 +78,24 @@ def validate_webhook_hmac_signature(
     signature = provided_signature.strip()
     if "=" in signature:
         _, signature = signature.split("=", 1)
-    digest = hmac.new(expected_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(signature.lower(), digest.lower())
+    normalized_signature = signature.lower()
+
+    def _matches(body: bytes) -> bool:
+        digest = hmac.new(expected_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(normalized_signature, digest.lower())
+
+    if _matches(raw_body):
+        return True
+
+    # Some clients compute signatures from equivalent JSON with different whitespace.
+    # Accept those canonical variants to keep integrations resilient.
+    try:
+        parsed = json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        return False
+
+    candidates = [
+        json.dumps(parsed, ensure_ascii=True).encode("utf-8"),
+        json.dumps(parsed, ensure_ascii=True, separators=(",", ":")).encode("utf-8"),
+    ]
+    return any(_matches(candidate) for candidate in candidates)

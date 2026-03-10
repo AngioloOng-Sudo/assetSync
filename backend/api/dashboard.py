@@ -8,7 +8,8 @@ import io
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 
-from backend.models.schemas import AutosyncStateRequest, MarkReadRequest, TransferRequest
+from backend.models.db import fetch_asset_events
+from backend.models.schemas import AssetDetailResponse, AutosyncStateRequest, MarkReadRequest, TransferRequest
 from backend.services.activity_logger import get_activity, get_state, mark_logs_as_read
 from backend.services.autosync_engine import (
     get_autosync_enabled,
@@ -16,10 +17,10 @@ from backend.services.autosync_engine import (
     run_reconciliation,
     set_autosync_enabled,
 )
-from backend.services.kaseya_client import fetch_kaseya_assets
+from backend.services.kaseya_client import fetch_all_kaseya_assets, fetch_kaseya_asset_by_identifier
 from backend.services.matching import compare_assets
 from backend.services.parallel_fetch import fetch_asset_snapshots_async
-from backend.services.revnue_client import fetch_all_revnue_assets, fetch_revnue_assets
+from backend.services.revnue_client import fetch_all_revnue_assets, fetch_revnue_exact_matches
 from backend.services.transfer_engine import delete_revnue_asset, transfer_kaseya_assets_to_revnue
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
@@ -38,6 +39,45 @@ def _paginate(items: list[dict], page: int, page_size: int) -> dict:
     }
 
 
+def _matched_identifiers(revnue_assets: list[dict]) -> set[str]:
+    return {
+        str(asset.get("serial_number") or "")
+        for asset in revnue_assets
+        if asset.get("serial_number") or asset.get("asset_tag")
+    } | {
+        str(asset.get("asset_tag") or "")
+        for asset in revnue_assets
+        if asset.get("serial_number") or asset.get("asset_tag")
+    }
+
+
+def _filter_kaseya_assets_by_search(assets: list[dict], search: str) -> list[dict]:
+    search_text = search.strip().lower()
+    if not search_text:
+        return assets
+    return [
+        asset
+        for asset in assets
+        if search_text in (asset.get("Identifier", "").lower())
+        or search_text in (asset.get("Name", "").lower())
+        or search_text in (asset.get("Manufacturer", "").lower())
+        or search_text in (asset.get("Model", "").lower())
+    ]
+
+
+def _filter_revnue_assets_by_search(assets: list[dict], search: str) -> list[dict]:
+    search_text = search.strip().lower()
+    if not search_text:
+        return assets
+    return [
+        asset
+        for asset in assets
+        if search_text in str(asset.get("serial_number", "")).lower()
+        or search_text in str(asset.get("asset_tag", "")).lower()
+        or search_text in str(asset.get("name", "")).lower()
+    ]
+
+
 @router.get("/assets/kaseya")
 def get_kaseya_assets(
     search: str = Query(default="", max_length=100),
@@ -46,31 +86,14 @@ def get_kaseya_assets(
     only_missing: bool = Query(default=False),
 ) -> dict:
     try:
-        assets = fetch_kaseya_assets()
+        assets = fetch_all_kaseya_assets(page_size=100, max_pages=1000)
     except Exception as exc:  # upstream/network/auth errors
         raise HTTPException(status_code=502, detail=f"Kaseya API request failed: {exc}") from exc
     if only_missing:
         revnue_assets = fetch_all_revnue_assets(company=None)
-        matched = {
-            str(asset.get("serial_number") or "")
-            for asset in revnue_assets
-            if asset.get("serial_number") or asset.get("asset_tag")
-        } | {
-            str(asset.get("asset_tag") or "")
-            for asset in revnue_assets
-            if asset.get("serial_number") or asset.get("asset_tag")
-        }
+        matched = _matched_identifiers(revnue_assets)
         assets = [asset for asset in assets if str(asset.get("Identifier") or "") not in matched]
-    search_text = search.strip().lower()
-    if search_text:
-        assets = [
-            asset
-            for asset in assets
-            if search_text in (asset.get("Identifier", "").lower())
-            or search_text in (asset.get("Name", "").lower())
-            or search_text in (asset.get("Manufacturer", "").lower())
-            or search_text in (asset.get("Model", "").lower())
-        ]
+    assets = _filter_kaseya_assets_by_search(assets, search)
     return _paginate(assets, page, page_size)
 
 
@@ -90,16 +113,8 @@ def get_revnue_assets(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=100),
 ) -> dict:
-    assets = fetch_revnue_assets(company=None, top=100_000, skip=0)
-    search_text = search.strip().lower()
-    if search_text:
-        assets = [
-            asset
-            for asset in assets
-            if search_text in str(asset.get("serial_number", "")).lower()
-            or search_text in str(asset.get("asset_tag", "")).lower()
-            or search_text in str(asset.get("name", "")).lower()
-        ]
+    assets = fetch_all_revnue_assets(company=None)
+    assets = _filter_revnue_assets_by_search(assets, search)
     return _paginate(assets, page, page_size)
 
 
@@ -110,6 +125,82 @@ def get_revnue_assets_alias(
     page_size: int = Query(default=10, ge=1, le=100),
 ) -> dict:
     return get_revnue_assets(search=search, page=page, page_size=page_size)
+
+
+@router.get("/assets/strev")
+def get_strev_assets(
+    search: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+) -> dict:
+    return get_revnue_assets(search=search, page=page, page_size=page_size)
+
+
+@router.get("/strev/assets")
+def get_strev_assets_alias(
+    search: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+) -> dict:
+    return get_revnue_assets(search=search, page=page, page_size=page_size)
+
+
+@router.get("/dashboard/assets")
+def get_dashboard_assets(
+    kaseya_search: str = Query(default="", max_length=100),
+    kaseya_page: int = Query(default=1, ge=1),
+    kaseya_page_size: int = Query(default=10, ge=1, le=100),
+    strev_search: str = Query(default="", max_length=100),
+    strev_page: int = Query(default=1, ge=1),
+    strev_page_size: int = Query(default=10, ge=1, le=100),
+    only_missing: bool = Query(default=False),
+) -> dict:
+    try:
+        kaseya_assets = fetch_all_kaseya_assets(page_size=100, max_pages=1000)
+    except Exception as exc:  # upstream/network/auth errors
+        raise HTTPException(status_code=502, detail=f"Kaseya API request failed: {exc}") from exc
+
+    strev_assets = fetch_all_revnue_assets(company=None)
+    if only_missing:
+        matched = _matched_identifiers(strev_assets)
+        kaseya_assets = [asset for asset in kaseya_assets if str(asset.get("Identifier") or "") not in matched]
+
+    kaseya_payload = _paginate(_filter_kaseya_assets_by_search(kaseya_assets, kaseya_search), kaseya_page, kaseya_page_size)
+    strev_payload = _paginate(_filter_revnue_assets_by_search(strev_assets, strev_search), strev_page, strev_page_size)
+    return {
+        "kaseya": kaseya_payload,
+        "strev": strev_payload,
+        "revnue": dict(strev_payload),
+    }
+
+
+@router.get("/assets/detail/{identifier}", response_model=AssetDetailResponse)
+def get_asset_detail(identifier: str) -> AssetDetailResponse:
+    normalized_identifier = identifier.strip()
+    if not normalized_identifier:
+        raise HTTPException(status_code=400, detail="Identifier is required.")
+
+    try:
+        kaseya_asset = fetch_kaseya_asset_by_identifier(normalized_identifier)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Kaseya API request failed: {exc}") from exc
+
+    if not kaseya_asset:
+        raise HTTPException(status_code=404, detail=f'Asset "{normalized_identifier}" was not found in Kaseya.')
+
+    try:
+        matches = fetch_revnue_exact_matches(identifiers=[normalized_identifier])
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Revnue API request failed: {exc}") from exc
+
+    sync_events = fetch_asset_events(identifier=normalized_identifier, limit=20)
+    revnue_match = matches[0] if matches else None
+    return AssetDetailResponse(
+        identifier=normalized_identifier,
+        kaseya=kaseya_asset,
+        revnue_match=revnue_match,
+        sync_events=sync_events,
+    )
 
 
 @router.get("/assets/compare")
